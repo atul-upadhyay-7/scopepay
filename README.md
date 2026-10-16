@@ -50,7 +50,7 @@ Never commit a filled `.env`, put secrets in screenshots or paste them into chat
 
 Keep the repository PRIVATE. Do not expose the app publicly: it lacks real user accounts, production authentication, durable rate limiting, TLS, deployment access controls and reconciliation/webhooks. A session token is a local demo capability, not a login. Uncertain payment outcomes need manual sandbox activity inspection; do not create replacement orders blindly.
 
-The lean-demo target is October 20, 2026. Live AI evaluation and full current UI sandbox proof have passed; user laptop installation is a later handoff check. License choice, public release, English submission description, public YouTube video under three minutes, and judge-run access are separate owner steps. No license is selected and no hackathon entry has been submitted.
+The lean-demo target is October 20, 2026. Live AI evaluation and full current UI sandbox proof have passed; user laptop installation is a later handoff check. Public release, English submission description, public YouTube video under three minutes, and judge-run access are separate owner steps. MIT was selected by the owner on October 16, 2026. No hackathon entry has been submitted.
 
 ## Official references
 
@@ -59,3 +59,7 @@ The lean-demo target is October 20, 2026. Live AI evaluation and full current UI
 - https://developer.paypal.com/guides/node-express
 - https://console.groq.com/docs/structured-outputs
 - https://console.groq.com/docs/your-data
+
+## License
+
+[MIT](LICENSE). Copyright (c) 2026 Atul Upadhyay. Third-party dependencies and services retain their own terms. The repository remains private until public release is separately approved.
