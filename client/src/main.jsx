@@ -1,43 +1,32 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import './style.css';
+const EXAMPLE='Build a three-page portfolio website: Home, Projects and Contact. Include a contact form. Do not include visitor login. Deliver responsive layouts. Deadline is not agreed yet.';
 function App(){
-  const [config,setConfig]=useState(null),[message,setMessage]=useState('Checking the local sandbox API...'),[ready,setReady]=useState(false);
-  const [session]=useState(()=>{let value=sessionStorage.getItem('scopepay-session');if(!value){value=crypto.randomUUID();sessionStorage.setItem('scopepay-session',value);}return value;});
-  const key=useRef(null),payment=useRef(null),working=useRef(false);
-  async function api(path,body,extra={}){
-    const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','x-demo-session':session,...extra},body:JSON.stringify(body)});
-    const data=await r.json();if(!r.ok)throw new Error(data.error||'PAYMENT_UNCONFIRMED');return data;
-  }
-  useEffect(()=>{
-    let cancelled=false;let script;
-    (async()=>{
-      const r=await fetch('/api/config');if(!r.ok)throw new Error('API_UNAVAILABLE');const c=await r.json();
-      if(cancelled)return;setConfig(c);
-      if(!c.clientId){setMessage('Setup needed: configure sandbox credentials on the server.');return;}
-      script=document.createElement('script');script.src='https://www.sandbox.paypal.com/web-sdk/v6/core';
-      script.onload=async()=>{try{
-        const sdk=await window.paypal.createInstance({clientId:c.clientId,components:['paypal-payments'],pageType:'checkout'});
-        const eligibility=await sdk.findEligibleMethods();
-        if(!eligibility.isEligible('paypal'))throw new Error('PAYPAL_NOT_ELIGIBLE');
-        payment.current=await sdk.createPayPalOneTimePaymentSession({
-          onApprove:async({orderId})=>{try{setMessage('Buyer approved. Confirming capture...');const data=await api(`/api/orders/${orderId}/capture`,{});setMessage(`Sandbox payment ${data.status.toLowerCase()}. Capture: ${data.captureId}`);}catch(e){setMessage(`${e.message}. Payment not confirmed. Check sandbox activity before retrying.`);}finally{working.current=false;setReady(false);}},
-          onCancel:()=>{working.current=false;setMessage('Checkout cancelled. No completed payment was confirmed. Reload to start a new checkout.');setReady(false);},
-          onError:()=>{working.current=false;setMessage('Payment not confirmed. Check sandbox activity before retrying.');setReady(false);}
-        });
-        if(!cancelled){setReady(true);setMessage('Ready. Review the test item, then approve checkout in PayPal.');}
-      }catch(e){if(!cancelled)setMessage(`Sandbox unavailable: ${e.message}`);}};
-      script.onerror=()=>setMessage('Could not load the PayPal sandbox SDK. Check your connection.');document.head.appendChild(script);
-    })().catch(()=>{if(!cancelled)setMessage('API is not ready. Start MongoDB and the configured sandbox server.');});
-    return()=>{cancelled=true;script?.remove();};
-  },[]);
-  function checkout(){
-    if(working.current||!payment.current)return;working.current=true;setReady(false);
-    key.current=key.current||crypto.randomUUID();
-    const order=api('/api/orders',{sku:'sandbox-demo'},{'idempotency-key':key.current});
-    // Keep start in the direct click handler to preserve browser user activation.
-    payment.current.start({presentationMode:'auto'},order).catch(()=>{working.current=false;setMessage('Checkout did not finish. Check sandbox activity before trying again.');});
-  }
-  return <main><header><span className="brand">ScopePay<span className="dot">.</span></span><span className="tag">SANDBOX ONLY</span></header><section className="intro"><p className="eyebrow">PAYMENT CORE / BUILD 01</p><h1>A clear scope.<br/>A confirmed payment.</h1><p className="lead">First, prove the payment loop. Product and AI features come after the scope is agreed.</p></section><section className="card"><div><p className="eyebrow">TEST CHECKOUT</p><h2>Sandbox demo item</h2><p>One fixed-price test item. No real service is sold and no real money moves.</p></div><div className="price">${config?.price||'10.00'} <span>USD</span></div><dl><div><dt>Environment</dt><dd>PayPal sandbox</dd></div><div><dt>Price authority</dt><dd>Server-side catalog</dd></div><div><dt>Payment flow</dt><dd>Create → approve → capture</dd></div></dl><button disabled={!ready} onClick={checkout}>Review &amp; pay with PayPal sandbox</button><p className="status" role="status" aria-live="polite">{message}</p></section><footer>Local development prototype. Not production-ready. No AI functionality yet.</footer></main>;
+ const [config,setConfig]=useState(null),[brief,setBrief]=useState(EXAMPLE),[draft,setDraft]=useState(null),[review,setReview]=useState(null),[checked,setChecked]=useState(false),[busy,setBusy]=useState(false),[aiMessage,setAiMessage]=useState(''),[message,setMessage]=useState('Checking sandbox setup...'),[ready,setReady]=useState(false),[paid,setPaid]=useState(false);
+ const [session]=useState(()=>{let value=sessionStorage.getItem('scopepay-session');if(!value){value=crypto.randomUUID();sessionStorage.setItem('scopepay-session',value);}return value;});
+ const payment=useRef(null),working=useRef(false),key=useRef(null),reviewRef=useRef(null);
+ async function api(path,body,extra={}){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','x-demo-session':session,...extra},body:JSON.stringify(body)});const data=await r.json();if(!r.ok)throw new Error(data.error||'REQUEST_UNCONFIRMED');return data;}
+ useEffect(()=>{let cancelled=false,script;(async()=>{
+  const r=await fetch('/api/config');if(!r.ok)throw new Error('API_UNAVAILABLE');const c=await r.json();if(cancelled)return;setConfig(c);
+  if(!c.clientId){setMessage('Setup needed: configure sandbox credentials on the server.');return;}
+  script=document.createElement('script');script.src='https://www.sandbox.paypal.com/web-sdk/v6/core';
+  script.onload=async()=>{try{
+   const sdk=await window.paypal.createInstance({clientId:c.clientId,components:['paypal-payments'],pageType:'checkout'});const eligibility=await sdk.findEligibleMethods();if(!eligibility.isEligible('paypal'))throw new Error('PAYPAL_NOT_ELIGIBLE');
+   payment.current=await sdk.createPayPalOneTimePaymentSession({
+    onApprove:async({orderId})=>{try{setMessage('Buyer approved. Confirming capture...');const data=await api(`/api/orders/${orderId}/capture`,{});setMessage(`Sandbox payment ${data.status.toLowerCase()}. Capture: ${data.captureId}`);setPaid(true);}catch(e){setMessage(`${e.message}. Payment not confirmed. Check sandbox activity before retrying.`);}finally{working.current=false;setReady(false);}},
+    onCancel:()=>{working.current=false;setMessage('Checkout cancelled. No completed payment confirmed. Reload before starting another test.');setReady(false);},
+    onError:()=>{working.current=false;setMessage('Payment not confirmed. Check sandbox activity before retrying.');setReady(false);}
+   });if(!cancelled){setReady(true);setMessage('PayPal sandbox ready. Review the draft before checkout.');}
+  }catch(e){if(!cancelled)setMessage(`Sandbox unavailable: ${e.message}`);}};
+  script.onerror=()=>setMessage('Could not load the PayPal sandbox SDK.');document.head.appendChild(script);
+ })().catch(()=>{if(!cancelled)setMessage('API is not ready. Start MongoDB and the configured server.');});return()=>{cancelled=true;script?.remove();};},[]);
+ async function extract(){setBusy(true);setAiMessage('Extracting a draft. Nothing is approved or charged.');setDraft(null);setReview(null);reviewRef.current=null;setChecked(false);try{const data=await api('/api/scopes/extract',{brief});setDraft(data);setAiMessage('Draft only. Check the source evidence and open questions.');}catch(e){setAiMessage(`${e.message}. No draft was accepted. AI is not replaced by a canned result.`);}finally{setBusy(false);}}
+ async function confirmReview(){setBusy(true);try{const data=await api(`/api/scopes/${draft.scopeId}/review`,{acknowledge:true});setReview(data);reviewRef.current=data;setAiMessage('Reviewed for a sandbox demo only. Open questions remain listed. This is not a client contract.');}catch(e){setAiMessage(`${e.message}. Review was not saved.`);}finally{setBusy(false);}}
+ function checkout(){if(working.current||!payment.current||!reviewRef.current)return;working.current=true;setReady(false);key.current=key.current||crypto.randomUUID();const order=api('/api/orders',{sku:'sandbox-demo',scopeId:reviewRef.current.scopeId},{'idempotency-key':key.current});payment.current.start({presentationMode:'auto'},order).catch(()=>{working.current=false;setMessage('Checkout did not finish. Check sandbox activity before trying again.');});}
+ return <main><header><span className="brand">ScopePay<span className="dot">.</span></span><span className="tag">SANDBOX ONLY</span></header><section className="intro"><p className="eyebrow">BRIEF / REVIEW / TEST PAYMENT</p><h1>A clear scope.<br/>A confirmed payment.</h1><p className="lead">Turn a synthetic project brief into an evidence-linked draft. Review it yourself before a separate PayPal sandbox checkout.</p></section>
+ <section className="card"><p className="eyebrow">01 / SYNTHETIC BRIEF</p><h2>What needs to be built?</h2><label htmlFor="brief">Test brief only. No client names, personal data or secrets.</label><textarea id="brief" value={brief} minLength={20} maxLength={6000} disabled={busy||!!review||paid} onChange={e=>{setBrief(e.target.value);setDraft(null);setChecked(false);}}/><p className="hint">{brief.length}/6000 characters. AI can misunderstand the text.</p><button onClick={extract} disabled={busy||!!review||paid||!config?.aiConfigured||brief.trim().length<20}>Extract scope draft</button>{config&&!config.aiConfigured&&<p>AI not configured. Add your verified free Groq key on the server. No fake AI output is shown.</p>}<p role="status" aria-live="polite">{aiMessage}</p></section>
+ {draft&&<section className="card draft"><p className="eyebrow">02 / HUMAN REVIEW REQUIRED</p><h2>Draft scope</h2><p>{draft.summary}</p><h3>Deliverables with source evidence</h3><ul>{draft.deliverables.map((d,i)=><li key={i}><strong>{d.description}</strong><blockquote>{d.evidence}</blockquote></li>)}</ul><h3>Questions before a real agreement</h3>{draft.questions.length?<ul>{draft.questions.map((q,i)=><li key={i}>{q}</li>)}</ul>:<p>No questions identified. That is not proof the brief is complete.</p>}<h3>Conflicts</h3>{draft.conflicts.length?<ul>{draft.conflicts.map((c,i)=><li key={i}><strong>{c.description}</strong>{c.evidence.map((e,j)=><blockquote key={j}>{e}</blockquote>)}</li>)}</ul>:<p>No conflicts identified by the model.</p>}<label className="check"><input type="checkbox" checked={checked} disabled={!!review||busy} onChange={e=>setChecked(e.target.checked)}/><span>I checked the source evidence and open questions. Continue with this draft for a $10 simulated sandbox test only, not a client agreement.</span></label><button onClick={confirmReview} disabled={!checked||busy||!!review}>{review?'Review saved':'Confirm demo review'}</button></section>}
+ <section className="card checkout"><p className="eyebrow">03 / SEPARATE BUYER APPROVAL</p><h2>Sandbox demo item</h2><p>Fixed test item, not an AI-generated quote. No real service is sold and no real money moves.</p><div className="price">${config?.price||'10.00'} <span>USD</span></div><dl><div><dt>Environment</dt><dd>PayPal sandbox</dd></div><div><dt>Price authority</dt><dd>Server-side catalog</dd></div><div><dt>Draft review</dt><dd>{review?'Saved for this session':'Required first'}</dd></div></dl><button disabled={!ready||!review||paid} onClick={checkout}>Review &amp; pay with PayPal sandbox</button><p className="status" role="status" aria-live="polite">{message}</p>{paid&&<p className="success">Test complete. Keep the capture ID for comparison with seller activity.</p>}</section><footer>Local demo only. Not escrow, a legal contract or a production payment service. AI never sets prices or authorizes payment.</footer></main>;
 }
 createRoot(document.getElementById('root')).render(<App/>);

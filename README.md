@@ -1,79 +1,61 @@
-# ScopePay: sandbox payment core
+# ScopePay
 
-Private PayPal AI Hackathon work in progress. Working name only: the product concept is not frozen. There is a **provider-independent AI extraction skeleton, not a configured AI model**, no real-money transactions, and a completed backend/browser sandbox proof (not the full React SDK path).
+A private PayPal AI hackathon prototype: turn a synthetic project brief into an evidence-linked scope draft, review it explicitly, then make a separate fixed-price sandbox payment. AI never prices work or approves payment.
 
-## What exists
+## What works in the local build
 
-- React/Vite checkout review UI; Express API; MongoDB-backed sandbox order records.
-- PayPal sandbox Orders v2 adapter: create an order, let the buyer explicitly approve in the PayPal UI, then capture on the server.
-- Server-owned demo item: USD 10.00. Browser-supplied amounts are rejected.
-- Hashed browser-session capability, strict origin check, unique idempotency keys, stable capture request IDs and stored completion receipts.
-- Declined, cancelled and uncertain outcomes are not shown as successful payments.
+- React/Vite interface for a synthetic brief, draft summary, deliverables with exact source evidence, questions and conflicts.
+- Server-side extraction validation with clear disabled, timeout, refusal and invalid-output errors. No canned output masquerading as AI.
+- Groq adapter for `openai/gpt-oss-20b`, strict JSON schema, separate system/brief messages, fixed endpoint, no tools or automatic retry, no paid fallback.
+- Explicit review checkbox and server-saved review tied to the browser session in MongoDB.
+- Server-enforced reviewed-scope gate before creating the fixed USD 10.00 demo order.
+- PayPal sandbox SDK v6, Orders v2 create/capture, browser buyer approval, server-owned amount, session capability/origin checks, idempotency and stored completion receipt.
+- Cancelled, declined, pending and uncertain outcomes are never marked completed.
 
-This is a local development prototype, **not production-ready**. The browser-session capability is not a user-account system. Do not expose this local server on the internet without real authentication, rate limits, TLS, access controls and further security review. No escrow, automatic payment or payout features exist.
+This is a local prototype, not a production service, escrow product, legal agreement or automatic charging system. The review acknowledges a draft for a simulated demo only, including open questions. It does not settle a client's requirements or create an obligation. No real service is sold and no real money moves.
 
-## Requirements
+## Run
 
-Node.js 22+, npm, and a running local MongoDB. A PayPal Developer account, sandbox app credentials, and sandbox personal buyer + business seller accounts are needed for a real sandbox checkout test. No live keys or paid service is required.
-
-## Setup
+Node 22+, npm and local MongoDB Community are required. Use free services only.
 
 ```bash
 npm ci
 cp .env.example .env
-```
-
-Edit `.env` locally. Use **sandbox** Client ID/Secret from PayPal Developer Dashboard and your local MongoDB URI. Do not send secrets in chat, put them in screenshots, or commit them. The Client ID is public; the secret stays server-side.
-
-Start MongoDB using your existing local installation. If you do not have one, stop and choose a local setup rather than signing up for a paid database.
-
-```bash
+# Edit .env locally with sandbox credentials and your local MongoDB URI.
 npm test
 npm run build
 npm run dev
 ```
 
-Open http://localhost:5173 (use `localhost`, matching APP_ORIGIN). API listens on http://127.0.0.1:8090. `npm start` starts only the API; `npm run build` builds the client but does not deploy or serve it. The API refuses missing credentials and non-sandbox PAYPAL_ENV.
+Open **http://localhost:5173**. API is loopback-only on port 8090. The built client is not automatically hosted by `npm start`; use `npm run dev` for this local demo. See [full setup, demo and troubleshooting](docs/LOCAL_RUN.md).
 
-```bash
-curl http://127.0.0.1:8090/api/health
-```
+Groq is disabled unless an API key and `GROQ_FREE_PLAN_CONFIRMED=true` are configured, with `AI_SYNTHETIC_ONLY=true`. Verify the account is Free, the fixed model is accessible and Zero Data Retention is enabled first. Do not add a card, buy credits or upgrade. Free limits are account-specific. The adapter stops after 50 requests per process; this is not a durable global quota. Rate limits/errors fail explicitly, without a paid fallback.
 
-Expected: `{"status":"ok","environment":"sandbox","database":"connected"}`.
+Never commit a filled `.env`, put secrets in screenshots or paste them into chat. No keys or test-account passwords are included. Only use synthetic briefs: the operator flag does not automatically detect private content. Extracted drafts are stored in local MongoDB; do not put real client or personal data in them.
 
-## Sandbox verification checklist
+## Verification, honestly scoped
 
-1. Confirm SDK loads and checkout is eligible in your browser.
-2. Review the USD 10.00 test item; click the sandbox checkout button.
-3. Approve using the generated personal **sandbox** buyer, not your real account.
-4. Confirm UI says completed with a capture ID.
-5. Inspect the business **sandbox** seller activity and confirm the same captured order/amount/currency. Record only non-secret IDs and outcome in `docs/VERIFICATION.md`.
-6. Exercise cancel, declined payment and repeated requests. Do not mark a pending/unconfirmed result paid. Keep test account negative-testing mode off when recording a success demo.
+[Verification record](docs/VERIFICATION.md) distinguishes real sandbox proof, fake-provider tests and unresolved checks.
 
-The server records order reservations before calling PayPal. If creation fails or times out, a retry with that key will return `CREATE_PENDING_REVIEW` rather than risk a fresh duplicate. For an uncertain capture, inspect sandbox activity first. Full automated reconciliation/webhooks are not implemented. Do not automatically create a replacement order to bypass an uncertain result.
+- 44 unit/API/adapter tests pass; production build passes.
+- Real temporary MongoDB + React UI test passes draft extraction using an injected fake provider, review persistence, checkout gate and desktop/mobile layout.
+- Fake-SDK UI scenarios cover completed, cancelled, checkout-error and AI-error outcomes. Those are not live payment proof.
+- Actual backend -> browser approval -> backend capture and independent sandbox seller receipt were verified Oct 16 before the review UI extension.
+- Current full UI flow passed with real Groq extraction, MongoDB review, SDK v6 create, sandbox buyer approval, server capture and independent seller receipt: order `32M04360X0766143V`, capture `0VC41183E2084414S`, USD 10.00, Completed.
+- Groq account Free/$0 and Global ZDR verified; six synthetic cases manually reviewed, including safe refusals. See `evaluation/verified-synthetic-20261016.json`. This is bounded evidence, not a general accuracy guarantee.
 
-## Current verification
+`npm run evaluate` runs at most six synthetic cases and saves an ignored local results file. Inspect results against each case's semantic checklist. Exact evidence and strict JSON do not prove correct interpretation.
 
-See `docs/VERIFICATION.md`. Unit/API tests use fake PayPal responses, not live sandbox calls. Backend create -> browser approval -> backend capture and seller receipt were verified Oct 16; full React SDK checkout remains unverified. See the exact proof boundary in `docs/VERIFICATION.md`.
+## Boundaries and remaining work
 
-## AI workflow skeleton
+Keep the repository PRIVATE. Do not expose the app publicly: it lacks real user accounts, production authentication, durable rate limiting, TLS, deployment access controls and reconciliation/webhooks. A session token is a local demo capability, not a login. Uncertain payment outcomes need manual sandbox activity inspection; do not create replacement orders blindly.
 
-`POST /api/scopes/extract` accepts only a brief. Without an injected model provider it returns `503 AI_NOT_CONFIGURED`; no fixture is presented as live AI. The extraction module defines a schema and validates deliverable evidence against exact text from the brief. Missing questions and conflicts remain drafts for human review. Output cannot set payment/approval fields. Timeout, refusal and malformed-output paths are tested. This is not semantic correctness proof: exact evidence can still be misinterpreted. The real provider, user review UI and evaluated model behavior remain to be built. No paid API call was made.
+The lean-demo target is October 20, 2026. Live AI evaluation and full current UI sandbox proof have passed; user laptop installation is a later handoff check. License choice, public release, English submission description, public YouTube video under three minutes, and judge-run access are separate owner steps. No license is selected and no hackathon entry has been submitted.
 
-
-## October 20 lean-build target (proposal)
-
-- Oct 16: choose the concept and prove real sandbox checkout.
-- Oct 17: implement one useful AI workflow, evaluated on synthetic examples.
-- Oct 18: connect AI output, explicit human review and checkout in one working flow.
-- Oct 19: error handling, fresh-run tests, privacy/security fixes, mobile checks.
-- Oct 20: freeze a working lean demo; only then polish video/docs/submission.
-
-This target depends on concept approval, available time and credentials. It is not a completed submission. Final hackathon entry needs meaningful AI + PayPal, public open-source repository with an approved license, English description, a public YouTube demo under 3 minutes and judge-run access through Dec 15. Keep this repository private until the owner approves publication. No open-source license has been selected yet.
-
-## Sources
+## Official references
 
 - https://paypalaihackathon.devpost.com/rules
 - https://paypalaihackathon.devpost.com/resources
 - https://developer.paypal.com/guides/node-express
-- https://github.com/paypaldev/getting-started-with-paypal-sandbox
+- https://console.groq.com/docs/structured-outputs
+- https://console.groq.com/docs/your-data

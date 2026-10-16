@@ -6,3 +6,4 @@ client/dist/
 coverage/
 *.log
 .DS_Store
+evaluation/results.local.json
