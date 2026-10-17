@@ -37,7 +37,7 @@ Synthetic brief              AI draft                  Review                 Sa
 - `backend/.../paypal/`: `PayPalClient` - sandbox token, order create/capture with idempotency identifiers, webhook signature verification.
 - `backend/.../store/`: JPA entities and repositories for drafts and orders; `OrderStates` (state machine), `LedgerService` (double-entry), `OutboxService` (transactional outbox).
 - `backend/src/main/resources/db/migration/`: Flyway V1 (drafts/orders) and V2 (ledger/outbox).
-- `backend/src/test/`: 74 JUnit tests with stubbed PayPal/AI; `DemoMain` is a test-only local runner (H2 + scripted providers) used for screenshots.
+- `backend/src/test/`: 75 JUnit tests with stubbed PayPal/AI; `DemoMain` is a test-only local runner (H2 + scripted providers) used for screenshots.
 
 ## What crosses each boundary
 
