@@ -123,6 +123,7 @@ With `DEMO_TOOLS=true`, a Demo controls card on the Payment page simulates PayPa
 ## Troubleshooting
 
 - `Flyway`/`connection refused`: is `podman ps` showing scopepay-db? Restart with `podman start scopepay-db`.
+- `port is already allocated` on the podman run: something else owns 5432. Check with `ss -ltnp`, leave it alone, and use host port 5433 instead: rerun with `-p 127.0.0.1:5433:5432` and set `DATABASE_URL=jdbc:postgresql://127.0.0.1:5433/scopepay` in your `.env`.
 - `AI_NOT_CONFIGURED`: missing Groq key or Free confirmation. Check step 5; do not substitute fixture results.
 - `AI_UNAVAILABLE`, `AI_TIMEOUT`, `AI_REFUSED`: no accepted draft. Check actual free quota; do not upgrade to bypass.
 - `UNGROUNDED_DELIVERABLE` / `UNGROUNDED_CONFLICT`: evidence was not verbatim from the brief; the draft was rejected.
