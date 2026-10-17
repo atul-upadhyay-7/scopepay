@@ -4,13 +4,20 @@ A private, sandbox-only hackathon prototype. No real service is sold, no escrow 
 
 Stack: Spring Boot 3.3 (Java 21) + PostgreSQL 17 backend, React + Vite + shadcn/ui (Tailwind v4) frontend. One laptop runs both.
 
-## Step 1 - Java 21
+## Step 1 - JDK 21
 
 ```bash
 java -version
 ```
 
-Need `21` or newer. On Fedora, if missing: `sudo dnf install java-21-openjdk-devel`, then re-check.
+Need exactly a 21.0.x version. The build is verified on JDK 21; newer JDKs (25+) can break the database layer's bytecode generation, so use 21. On Fedora: `sudo dnf install java-21-openjdk-devel` - this installs side by side and does not replace a newer default JDK.
+
+If your default `java` is not 21, point the backend steps at 21 explicitly:
+
+```bash
+export JAVA_HOME=/usr/lib/jvm/java-21-openjdk
+$JAVA_HOME/bin/java -version
+```
 
 ## Step 2 - Maven
 
