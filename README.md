@@ -14,6 +14,23 @@ A private PayPal AI hackathon prototype: turn a synthetic project brief into an 
 
 This is a local prototype, not a production service, escrow product, legal agreement or automatic charging system. The review acknowledges a draft for a simulated demo only, including open questions. It does not settle a client's requirements or create an obligation. No real service is sold and no real money moves.
 
+## Why ScopePay
+
+Freelancers lose money twice: unclear scopes that drift into disputes, and awkward payment collection after the work. ScopePay explores one fix for that: an AI that turns a plain-English brief into a structured scope draft where every deliverable links to its exact source evidence, a required human review of that draft, and only then a separate, explicit PayPal payment step. The AI reads and organizes; it never sets the price and never approves a charge. The human stays the decision-maker end to end.
+
+## Built with, and how each tool is used
+
+- **PayPal JavaScript SDK v6 + Orders v2 REST API (sandbox)**: browser buyer approval, server-side order create/capture with idempotency identifiers, and receipt verification of status, amount and currency before the app marks anything complete.
+- **Groq `openai/gpt-oss-20b`**: scope-draft extraction into a strict JSON schema, with verbatim evidence spans quoted from the brief. One fixed model and endpoint, no tool use, no automatic retries, no paid fallback; refusals and timeouts fail closed.
+- **React + Vite**: the brief, evidence-linked review and checkout interface.
+- **Express + MongoDB**: loopback API, session capability checks, the server-enforced reviewed-scope gate, and stored drafts/reviews/receipts.
+
+## What it looks like
+
+| Desktop review flow | Mobile |
+| --- | --- |
+| ![ScopePay desktop review flow: synthetic brief, draft with source evidence, review checkbox, sandbox payment](docs/screenshot-review-desktop.png) | ![ScopePay mobile view](docs/screenshot-review-mobile.png) |
+
 ## Run
 
 Node 22+, npm and local MongoDB Community are required. Use free services only.
@@ -51,6 +68,10 @@ Never commit a filled `.env`, put secrets in screenshots or paste them into chat
 Keep the repository PRIVATE. Do not expose the app publicly: it lacks real user accounts, production authentication, durable rate limiting, TLS, deployment access controls and reconciliation/webhooks. A session token is a local demo capability, not a login. Uncertain payment outcomes need manual sandbox activity inspection; do not create replacement orders blindly.
 
 The lean-demo target is October 20, 2026. Live AI evaluation and full current UI sandbox proof have passed; user laptop installation is a later handoff check. Public release, English submission description, public YouTube video under three minutes, and judge-run access are separate owner steps. MIT was selected by the owner on October 16, 2026. No hackathon entry has been submitted.
+
+## Architecture
+
+See [architecture and trust boundaries](docs/ARCHITECTURE.md). The application remains a private local demo; release and submission are separate owner decisions.
 
 ## Official references
 
