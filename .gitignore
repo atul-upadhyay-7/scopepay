@@ -7,3 +7,5 @@ coverage/
 *.log
 .DS_Store
 evaluation/results.local.json
+
+backend/target/
