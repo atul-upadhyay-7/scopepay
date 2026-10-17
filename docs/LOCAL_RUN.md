@@ -12,12 +12,15 @@ java -version
 
 Need exactly a 21.0.x version. The build is verified on JDK 21; newer JDKs (25+) can break the database layer's bytecode generation, so use 21. On Fedora: `sudo dnf install java-21-openjdk-devel` - this installs side by side and does not replace a newer default JDK.
 
-If your default `java` is not 21, point the backend steps at 21 explicitly:
+If your default `java` is not 21, find the 21 install and point the backend steps at it explicitly:
 
 ```bash
-export JAVA_HOME=/usr/lib/jvm/java-21-openjdk
+ls /usr/lib/jvm
+export JAVA_HOME=/usr/lib/jvm/<the 21 folder from that list>
 $JAVA_HOME/bin/java -version
 ```
+
+Any JDK 21 vendor works (Fedora's openjdk package, Temurin, etc.) - only the version matters.
 
 ## Step 2 - Maven
 
