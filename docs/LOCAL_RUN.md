@@ -1,58 +1,126 @@
 # Run ScopePay locally
 
-This is a private, sandbox-only hackathon prototype. No real service is sold, no escrow exists, and the AI draft is not a contract or a price quote.
+A private, sandbox-only hackathon prototype. No real service is sold, no escrow exists, and the AI draft is not a contract or a price quote. Everything below uses free software only.
 
-## Free prerequisites
+Stack: Spring Boot 3.3 (Java 21) + PostgreSQL 17 backend, React + Vite + shadcn/ui (Tailwind v4) frontend. One laptop runs both.
 
-- Node 22 or newer and npm.
-- Local MongoDB Community running. Example local URI: `mongodb://127.0.0.1:27017`. Do not use a paid hosted database.
-- PayPal Developer sandbox app: public Client ID and server-side secret, plus a generated personal sandbox buyer.
-- Optional Groq Free account with access to `openai/gpt-oss-20b`. Verify the console says Free and enable Zero Data Retention. Do not add a card, buy credits or upgrade. Actual free quotas are account-specific.
-
-## Setup
+## Step 1 - Java 21
 
 ```bash
-npm ci
+java -version
+```
+
+Need `21` or newer. On Fedora, if missing: `sudo dnf install java-21-openjdk-devel`, then re-check.
+
+## Step 2 - Maven
+
+```bash
+mvn -version
+```
+
+If missing: `sudo dnf install maven`, then re-check.
+
+## Step 3 - Node 22+ (for the client)
+
+```bash
+node -v
+```
+
+Need `v22` or newer. On Fedora: `sudo dnf install nodejs22` (or use nvm), then re-check.
+
+## Step 4 - PostgreSQL in podman (free, local only)
+
+```bash
+podman run -d --name scopepay-db \
+  -e POSTGRES_USER=scopepay \
+  -e POSTGRES_PASSWORD=scopepay-local \
+  -e POSTGRES_DB=scopepay \
+  -p 127.0.0.1:5432:5432 \
+  docker.io/library/postgres:17
+```
+
+Check it is up: `podman ps` shows `scopepay-db`. Later sessions: `podman start scopepay-db` (data persists in the container). This is a throwaway local database - do not point the app at any hosted database.
+
+## Step 5 - Configure
+
+```bash
 cp .env.example .env
 ```
 
-Edit `.env` on your own machine. Set `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET` and `MONGODB_URI`. The AI needs `GROQ_API_KEY`, `GROQ_FREE_PLAN_CONFIRMED=true`, `AI_SYNTHETIC_ONLY=true`. Only set the confirmation flag after checking Free status and ZDR. All other values can stay as in the example. Never commit the filled file or paste secrets into chat.
+Edit `.env` locally. Required: `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` from your PayPal Developer **sandbox** app. For AI drafts: `GROQ_API_KEY`, plus `GROQ_FREE_PLAN_CONFIRMED=true` only after the console shows Free and Zero Data Retention is on. Do not add a card, buy credits or upgrade.
+
+Optional: `PAYPAL_WEBHOOK_ID` (sandbox dashboard, Notifications > Webhooks) enables the live webhook endpoint; without it the endpoint stays closed (`WEBHOOK_NOT_CONFIGURED`). Leave `DEMO_TOOLS=false` for the real flow.
+
+Never commit the filled `.env` or paste secrets into chat.
+
+Load the variables into your shell before starting the backend:
 
 ```bash
-npm test
-npm run build
+set -a; source .env; set +a
+```
+
+## Step 6 - Backend tests (no services needed)
+
+```bash
+cd backend
+mvn test
+```
+
+The full JUnit suite runs against an in-memory database with stubbed PayPal and AI: 74 tests, all must pass. This proves the safety code without touching the network.
+
+## Step 7 - Start the backend
+
+Same shell (env still loaded), from `backend/`:
+
+```bash
+mvn spring-boot:run
+```
+
+Check in another terminal: `curl http://127.0.0.1:8090/api/health` returns `{"status":"ok","environment":"sandbox","database":"connected"}`. The API binds to loopback only. Flyway creates the tables in your local PostgreSQL on first run.
+
+## Step 8 - Start the client
+
+New terminal:
+
+```bash
+cd client
+npm ci
 npm run dev
 ```
 
-Open **http://localhost:5173**, not 127.0.0.1: the exact origin gate defaults to localhost. The API binds only to local loopback port 8090. A green health response at http://127.0.0.1:8090/api/health means MongoDB connected, not that PayPal or AI are verified.
+Open **http://localhost:5173** - not 127.0.0.1: the origin gate matches `APP_ORIGIN` exactly.
 
-## Demo
+## The demo flow
 
-1. Keep the example brief or enter a synthetic one. No names, real client briefs, confidential data or secrets.
-2. Click Extract scope draft. Without a key/confirmation, AI is clearly disabled; there is no canned replacement.
-3. Read every deliverable and its verbatim evidence, questions and conflicts. Bad interpretation? Reload and revise the brief; do not approve it. Schema-valid JSON is not proof of correctness.
-4. Check the review box and Confirm demo review. The server stores this review tied to the browser session. This acknowledges a draft for a simulated demo only, including unresolved questions, not a real agreement.
-5. Review the fixed **USD 10.00** test item. It is server-owned, not priced by AI. Click the separate PayPal sandbox checkout button.
-6. In PayPal use the generated **sandbox buyer**, never your real account. Approve only the $10 sandbox test.
-7. Wait for the UI to display COMPLETED and a capture ID. Independently inspect seller sandbox activity for the same capture/amount/currency.
-8. Cancelled, declined, pending or uncertain outcomes are not paid. Check seller activity before any new checkout. Do not retry blindly.
+1. Keep the example brief or paste a synthetic one. No real client data, names or secrets.
+2. Extract a draft. Without a configured Groq key the AI reports itself disabled; there is no canned replacement.
+3. Review the draft: every deliverable links to verbatim evidence from your brief. Check the acknowledgment box and save the review. The server requires this before any order.
+4. Payment: one fixed USD 10.00 sandbox item, priced by the server, never the AI. Approve in PayPal's own sandbox checkout with a **sandbox buyer**, never your real account.
+5. Receipts: open your order. The timeline shows every server-side event (created, captured, or held for review) and the double-entry ledger the server posted - both sides, netting to zero.
+6. Try **Replay this request** on the order: it re-sends the same idempotency key and the server returns the original order (HTTP 200), proving a retry cannot double-charge.
+7. Independently inspect the seller sandbox activity in the PayPal dashboard for the same capture id, amount and currency.
 
-Each draft/review is stored in local MongoDB. Browser sessionStorage owns access, so a new tab/session is not a user login and will not inherit the draft. Reload intentionally starts a fresh UI flow. There is no multi-user auth, public hosting or recovery dashboard.
+Cancelled, declined, pending or uncertain outcomes are never shown as paid. Check seller activity before any new checkout; do not retry blindly.
 
-## Synthetic AI evaluation
+### Optional: webhooks
 
-`npm run evaluate` sends at most six synthetic briefs from `evaluation/briefs.json` to the configured Groq account. It stops at the first error and saves ignored `evaluation/results.local.json`. Read every result against the included manual checklist before claiming a quality pass. A strict JSON schema never proves the model understood negation, omitted requirements or source intent. The server adapter also has a per-process 50-request ceiling, no automatic retry and no paid fallback. This is a cost guard, not a durable global quota.
+With `PAYPAL_WEBHOOK_ID` set, point a sandbox webhook at `http://127.0.0.1:8090/api/webhooks/paypal` for `PAYMENT.CAPTURE.COMPLETED`. The server verifies each transmission with PayPal's verify endpoint before recording `WEBHOOK_CONFIRMED` on the matching order; anything unverifiable is rejected and logged. For a local demo without a public URL, `DEMO_TOOLS=true` adds a **Simulate webhook** button on the order dialog - with real credentials PayPal correctly refuses the synthetic signature, which is the demonstration.
+
+### Optional: failure drills
+
+With `DEMO_TOOLS=true`, a Demo controls card on the Payment page simulates PayPal failures (unclear capture, wrong amount, create outage). The server's real safety code handles each one; nothing can mark a payment as paid.
 
 ## Troubleshooting
 
-- `AI_NOT_CONFIGURED`: missing key or Free confirmation. Check setup, do not substitute fixture results.
-- `AI_UNAVAILABLE`, `AI_TIMEOUT`, `AI_REFUSED`: no accepted draft. Check actual free quota/model availability. Do not upgrade to bypass this.
-- `UNGROUNDED_DELIVERABLE` or `UNGROUNDED_CONFLICT`: evidence did not match the brief exactly. Output is rejected.
-- `REVIEWED_SCOPE_REQUIRED`: extraction and explicit review must happen in the same browser session before order creation.
-- `ORIGIN_NOT_ALLOWED`: open localhost:5173. Changing port requires matching `APP_ORIGIN`.
+- `Flyway`/`connection refused`: is `podman ps` showing scopepay-db? Restart with `podman start scopepay-db`.
+- `AI_NOT_CONFIGURED`: missing Groq key or Free confirmation. Check step 5; do not substitute fixture results.
+- `AI_UNAVAILABLE`, `AI_TIMEOUT`, `AI_REFUSED`: no accepted draft. Check actual free quota; do not upgrade to bypass.
+- `UNGROUNDED_DELIVERABLE` / `UNGROUNDED_CONFLICT`: evidence was not verbatim from the brief; the draft was rejected.
+- `REVIEWED_SCOPE_REQUIRED`: extract and save the review in the same browser session before ordering.
+- `ORIGIN_NOT_ALLOWED`: open localhost:5173, or make `APP_ORIGIN` match the port you use.
 - `PAYPAL_AUTH_FAILED`: check sandbox credentials, not production keys.
 - `PAYMENT_UNCONFIRMED`: check seller activity first. Never assume a timeout means a charge failed.
 
 ## Safety boundaries
 
-Do not expose this local app on the internet. It has no real account authentication, durable rate-limiting, TLS or production access controls. No webhooks/reconciliation worker, escrow, payouts, legal acceptance, automatic price setting or real payment rails are implemented. Only a single demo buyer session should use it. Publication, license choice, video and hackathon submission are separate owner steps.
+Do not expose this app on the internet. It has no real accounts, durable rate limiting, TLS or production access controls. No escrow, payouts, legal acceptance, automatic pricing or live payment rails. Publication, the demo video and hackathon submission are separate owner steps.

@@ -2,15 +2,23 @@
 
 A private PayPal AI hackathon prototype: turn a synthetic project brief into an evidence-linked scope draft, review it explicitly, then make a separate fixed-price sandbox payment. AI never prices work or approves payment.
 
+Stack: **Spring Boot 3.3 (Java 21) + PostgreSQL** backend, **React + Vite + shadcn/ui (Tailwind v4)** frontend.
+
 ## What works in the local build
 
-- React/Vite interface for a synthetic brief, draft summary, deliverables with exact source evidence, questions and conflicts.
+- Multi-page React interface (shadcn/ui): synthetic brief, draft summary, deliverables with exact source evidence, questions and conflicts, review, payment, receipts.
 - Server-side extraction validation with clear disabled, timeout, refusal and invalid-output errors. No canned output masquerading as AI.
 - Groq adapter for `openai/gpt-oss-20b`, strict JSON schema, separate system/brief messages, fixed endpoint, no tools or automatic retry, no paid fallback.
-- Explicit review checkbox and server-saved review tied to the browser session in MongoDB.
+- Explicit review checkbox and server-saved review tied to the browser session in PostgreSQL.
 - Server-enforced reviewed-scope gate before creating the fixed USD 10.00 demo order.
 - PayPal sandbox SDK v6, Orders v2 create/capture, browser buyer approval, server-owned amount, session capability/origin checks, idempotency and stored completion receipt.
 - Cancelled, declined, pending and uncertain outcomes are never marked completed.
+- **Order state machine**: only `CREATING -> CREATED -> COMPLETED | PENDING_REVIEW -> COMPLETED`; anything else fails closed.
+- **Double-entry ledger**: every completed capture posts a balanced debit/credit group in the same transaction; an unbalanced group rolls back.
+- **Transactional outbox**: every state change writes its audit event atomically; the Receipts page renders this trail as a per-order payment timeline with the ledger beside it.
+- **Idempotency proof**: the Receipts order view can replay the same idempotency key live - the server returns the original order (HTTP 200), never a second PayPal order.
+- **Webhook intake**: `/api/webhooks/paypal` verifies each transmission with PayPal's own verify endpoint before recording anything; forged or unverifiable webhooks are rejected and logged, and a webhook never moves order state.
+- **Demo tools (local only, `DEMO_TOOLS=true`)**: webhook simulator through the real verification path, and failure-injection toggles (unclear capture, wrong amount, create outage) that drive the server's real fail-closed handling.
 
 This is a local prototype, not a production service, escrow product, legal agreement or automatic charging system. The review acknowledges a draft for a simulated demo only, including open questions. It does not settle a client's requirements or create an obligation. No real service is sold and no real money moves.
 
@@ -20,54 +28,54 @@ Freelancers lose money twice: unclear scopes that drift into disputes, and awkwa
 
 ## Built with, and how each tool is used
 
-- **PayPal JavaScript SDK v6 + Orders v2 REST API (sandbox)**: browser buyer approval, server-side order create/capture with idempotency identifiers, and receipt verification of status, amount and currency before the app marks anything complete.
+- **PayPal JavaScript SDK v6 + Orders v2 REST API (sandbox)**: browser buyer approval, server-side order create/capture with idempotency identifiers, receipt verification of status, amount and currency before anything is marked complete, and webhook signature verification.
 - **Groq `openai/gpt-oss-20b`**: scope-draft extraction into a strict JSON schema, with verbatim evidence spans quoted from the brief. One fixed model and endpoint, no tool use, no automatic retries, no paid fallback; refusals and timeouts fail closed.
-- **React + Vite**: the brief, evidence-linked review and checkout interface.
-- **Express + MongoDB**: loopback API, session capability checks, the server-enforced reviewed-scope gate, and stored drafts/reviews/receipts.
+- **Spring Boot 3.3 (Java 21) + Spring Data JPA + Flyway**: loopback API, session capability checks, the review gate, order state machine, double-entry ledger and transactional outbox.
+- **PostgreSQL 17**: durable drafts, reviews, orders, ledger entries and outbox events. Migrations in `backend/src/main/resources/db/migration`.
+- **React + Vite + shadcn/ui (Tailwind v4, Radix)**: the multi-page interface - sidebar layout, evidence review, sandbox payment, receipts with tabs and the order detail dialog.
 
 ## What it looks like
 
 | Desktop review flow | Mobile |
 | --- | --- |
-| ![ScopePay desktop review flow: synthetic brief, draft with source evidence, review checkbox, sandbox payment](docs/screenshot-review-desktop.png) | ![ScopePay mobile view](docs/screenshot-review-mobile.png) |
+| ![ScopePay desktop review flow: synthetic brief, draft with source evidence, review checkbox](docs/screenshot-review-desktop.png) | ![ScopePay mobile review](docs/screenshot-review-mobile.png) |
+
+| Order timeline and ledger (desktop) | Order timeline (mobile) |
+| --- | --- |
+| ![Order dialog showing the server-side payment timeline and double-entry ledger](docs/screenshot-order-desktop.png) | ![Order timeline on mobile](docs/screenshot-order-mobile.png) |
 
 ## Run
 
-Node 22+, npm and local MongoDB Community are required. Use free services only.
+Java 21, Maven, Node 22+ and a local PostgreSQL (a free podman container works) are required. See [full setup, demo and troubleshooting](docs/LOCAL_RUN.md) - it is written one step at a time.
 
 ```bash
-npm ci
-cp .env.example .env
-# Edit .env locally with sandbox credentials and your local MongoDB URI.
-npm test
-npm run build
-npm run dev
+cp .env.example .env   # fill locally with sandbox credentials
+set -a; source .env; set +a
+cd backend && mvn test && mvn spring-boot:run
+# new terminal:
+cd client && npm ci && npm run dev
 ```
 
-Open **http://localhost:5173**. API is loopback-only on port 8090. The built client is not automatically hosted by `npm start`; use `npm run dev` for this local demo. See [full setup, demo and troubleshooting](docs/LOCAL_RUN.md).
+Open **http://localhost:5173**. API is loopback-only on port 8090.
 
-Groq is disabled unless an API key and `GROQ_FREE_PLAN_CONFIRMED=true` are configured, with `AI_SYNTHETIC_ONLY=true`. Verify the account is Free, the fixed model is accessible and Zero Data Retention is enabled first. Do not add a card, buy credits or upgrade. Free limits are account-specific. The adapter stops after 50 requests per process; this is not a durable global quota. Rate limits/errors fail explicitly, without a paid fallback.
+Groq is disabled unless an API key and `GROQ_FREE_PLAN_CONFIRMED=true` are configured, with `AI_SYNTHETIC_ONLY=true`. Verify the account is Free, the fixed model is accessible and Zero Data Retention is enabled first. Do not add a card, buy credits or upgrade. Free limits are account-specific.
 
-Never commit a filled `.env`, put secrets in screenshots or paste them into chat. No keys or test-account passwords are included. Only use synthetic briefs: the operator flag does not automatically detect private content. Extracted drafts are stored in local MongoDB; do not put real client or personal data in them.
+Never commit a filled `.env`, put secrets in screenshots or paste them into chat. No keys or test-account passwords are included. Only use synthetic briefs: the operator flag does not automatically detect private content.
 
 ## Verification, honestly scoped
 
-[Verification record](docs/VERIFICATION.md) distinguishes real sandbox proof, fake-provider tests and unresolved checks.
+[Verification record](docs/VERIFICATION.md) distinguishes automated proof, scripted stand-ins and checks still pending on the owner's machine.
 
-- 44 unit/API/adapter tests pass; production build passes.
-- Real temporary MongoDB + React UI test passes draft extraction using an injected fake provider, review persistence, checkout gate and desktop/mobile layout.
-- Fake-SDK UI scenarios cover completed, cancelled, checkout-error and AI-error outcomes. Those are not live payment proof.
-- Actual backend -> browser approval -> backend capture and independent sandbox seller receipt were verified Oct 16 before the review UI extension.
-- Current full UI flow passed with real Groq extraction, MongoDB review, SDK v6 create, sandbox buyer approval, server capture and independent seller receipt: order `32M04360X0766143V`, capture `0VC41183E2084414S`, USD 10.00, Completed.
-- Groq account Free/$0 and Global ZDR verified; six synthetic cases manually reviewed, including safe refusals. See `evaluation/verified-synthetic-20261016.json`. This is bounded evidence, not a general accuracy guarantee.
-
-`npm run evaluate` runs at most six synthetic cases and saves an ignored local results file. Inspect results against each case's semantic checklist. Exact evidence and strict JSON do not prove correct interpretation.
+- 74 JUnit tests pass (API, safety invariants, ledger, outbox, state machine, webhooks, AI adapter); production client build passes.
+- Payment safety paths (idempotent create, fail-closed capture, amount check, state machine, ledger balance, webhook verify) are covered by tests with a stubbed PayPal.
+- Screenshots in this README were taken against a scripted PayPal stand-in (test-only runner); the identical server code runs against the real sandbox with the owner's credentials.
+- The earlier Node prototype's live sandbox flow (buyer approval, capture, independent seller receipt) was verified Oct 16, 2026; the Spring Boot rebuild re-verifies live on the owner's laptop before submission.
 
 ## Boundaries and remaining work
 
-Keep the repository PRIVATE. Do not expose the app publicly: it lacks real user accounts, production authentication, durable rate limiting, TLS, deployment access controls and reconciliation/webhooks. A session token is a local demo capability, not a login. Uncertain payment outcomes need manual sandbox activity inspection; do not create replacement orders blindly.
+Keep the repository PRIVATE. Do not expose the app publicly: it lacks real user accounts, production authentication, durable rate limiting, TLS, deployment access controls and live payment rails. A session token is a local demo capability, not a login. Uncertain payment outcomes need manual sandbox activity inspection; do not create replacement orders blindly.
 
-The lean-demo target is October 20, 2026. Live AI evaluation and full current UI sandbox proof have passed; user laptop installation is a later handoff check. Public release, English submission description, public YouTube video under three minutes, and judge-run access are separate owner steps. MIT was selected by the owner on October 16, 2026. No hackathon entry has been submitted.
+Submission deadline is November 12, 2026 at 12:00 Pacific (November 13, 01:30 IST). Public release, the demo video and the Devpost submission are separate owner steps. MIT was selected by the owner on October 16, 2026. No hackathon entry has been submitted.
 
 ## Architecture
 
@@ -77,7 +85,8 @@ See [architecture and trust boundaries](docs/ARCHITECTURE.md). The application r
 
 - https://paypalaihackathon.devpost.com/rules
 - https://paypalaihackathon.devpost.com/resources
-- https://developer.paypal.com/guides/node-express
+- https://developer.paypal.com/docs/api/orders/v2/
+- https://developer.paypal.com/api/rest/webhooks/
 - https://console.groq.com/docs/structured-outputs
 - https://console.groq.com/docs/your-data
 
