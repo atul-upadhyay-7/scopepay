@@ -36,7 +36,9 @@ public class AppConfig {
 
   @Bean
   public PayPalClient payPalClient() {
-    return new PayPalClient(paypalClientId, paypalClientSecret);
+    PayPalClient client = new PayPalClient(paypalClientId, paypalClientSecret);
+    client.enableDefaultResilience();
+    return client;
   }
 
   @Bean

@@ -22,6 +22,8 @@ public class TestStubs {
     public volatile Supplier<JsonNode> createBehavior = () ->
         MAPPER.createObjectNode().put("id", "ORDER12345").put("status", "CREATED");
     public volatile Supplier<JsonNode> captureBehavior = () -> completedCapture();
+    public volatile Supplier<JsonNode> getBehavior = () ->
+        MAPPER.createObjectNode().put("id", "ORDER12345").put("status", "APPROVED");
 
     public StubPayPal() { super("stub", "stub"); }
 
@@ -40,6 +42,12 @@ public class TestStubs {
       verifyStatus = "SUCCESS";
       createBehavior = () -> MAPPER.createObjectNode().put("id", "ORDER12345").put("status", "CREATED");
       captureBehavior = TestStubs.StubPayPal::completedCapture;
+      getBehavior = () -> MAPPER.createObjectNode().put("id", "ORDER12345").put("status", "APPROVED");
+    }
+
+    @Override
+    public JsonNode getOrder(String orderId) {
+      return getBehavior.get();
     }
 
     @Override

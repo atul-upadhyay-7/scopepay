@@ -6,6 +6,7 @@ import com.scopepay.paypal.PayPalClient;
 import com.scopepay.store.OutboxService;
 import com.scopepay.store.SandboxOrder;
 import com.scopepay.store.SandboxOrderRepository;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -30,9 +31,11 @@ public class WebhookService {
   private final PayPalClient paypal;
   private final SandboxOrderRepository orders;
   private final OutboxService outbox;
+  private final MeterRegistry metrics;
 
-  public WebhookService(AppConfig config, PayPalClient paypal, SandboxOrderRepository orders, OutboxService outbox) {
-    this.config = config; this.paypal = paypal; this.orders = orders; this.outbox = outbox;
+  public WebhookService(AppConfig config, PayPalClient paypal, SandboxOrderRepository orders, OutboxService outbox,
+      MeterRegistry metrics) {
+    this.config = config; this.paypal = paypal; this.orders = orders; this.outbox = outbox; this.metrics = metrics;
   }
 
   public record Result(int status, String code, String verification, String requestId) {}
@@ -59,7 +62,7 @@ public class WebhookService {
       // Verification itself could not be completed: fail closed, record nothing as confirmed.
       return new Result(502, "WEBHOOK_VERIFICATION_UNAVAILABLE", null, null);
     }
-    if (!"SUCCESS".equals(verification)) return reject(transmission, event, "verification status " + verification);
+    if (!"SUCCESS".equals(verification)) { metrics.counter("scopepay.webhooks.rejected").increment(); return reject(transmission, event, "verification status " + verification); }
 
     String eventType = event.path("event_type").asText("");
     if (!"PAYMENT.CAPTURE.COMPLETED".equals(eventType)) {
@@ -79,6 +82,7 @@ public class WebhookService {
     fields.put("captureId", captureId);
     fields.put("eventId", event.path("id").asText(""));
     fields.put("orderId", order.getOrderId() == null ? "" : order.getOrderId());
+    metrics.counter("scopepay.webhooks.confirmed").increment();
     outbox.record("order", order.getRequestId(), "WEBHOOK_CONFIRMED", fields);
     return new Result(200, "WEBHOOK_CONFIRMED", verification, order.getRequestId());
   }

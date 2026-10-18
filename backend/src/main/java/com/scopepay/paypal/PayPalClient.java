@@ -10,9 +10,14 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.retry.Retry;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.concurrent.Callable;
 
 /** Direct PayPal REST integration over the real sandbox endpoints. No live mode exists. */
 public class PayPalClient {
@@ -24,6 +29,39 @@ public class PayPalClient {
   private final HttpClient client;
   private String token;
   private long tokenExpiresAtMs;
+  private volatile Retry retry;
+  private volatile CircuitBreaker circuitBreaker;
+
+  /** Retry + circuit breaker for transient PayPal faults. Business errors (4xx) never retry. */
+  public void setResilience(Retry retry, CircuitBreaker circuitBreaker) {
+    this.retry = retry; this.circuitBreaker = circuitBreaker;
+  }
+
+  /** Production wiring: 3 attempts with exponential backoff on transient faults, circuit opens at 60% failures. */
+  public void enableDefaultResilience() {
+    io.github.resilience4j.retry.RetryConfig retryConfig = io.github.resilience4j.retry.RetryConfig.custom()
+        .maxAttempts(3)
+        .intervalFunction(io.github.resilience4j.core.IntervalFunction
+            .ofExponentialBackoff(java.time.Duration.ofMillis(500), 2.0))
+        .retryOnException(PayPalClient::isTransient)
+        .build();
+    io.github.resilience4j.circuitbreaker.CircuitBreakerConfig breakerConfig =
+        io.github.resilience4j.circuitbreaker.CircuitBreakerConfig.custom()
+            .slidingWindowType(io.github.resilience4j.circuitbreaker.CircuitBreakerConfig.SlidingWindowType.COUNT_BASED)
+            .slidingWindowSize(10)
+            .minimumNumberOfCalls(5)
+            .failureRateThreshold(60)
+            .waitDurationInOpenState(java.time.Duration.ofSeconds(30))
+            .build();
+    setResilience(io.github.resilience4j.retry.Retry.of("paypal", retryConfig),
+        io.github.resilience4j.circuitbreaker.CircuitBreaker.of("paypal", breakerConfig));
+  }
+
+  static boolean isTransient(Throwable e) {
+    if (e instanceof IOException) return true;
+    if (e instanceof PayPalException p) return p.getStatus() >= 500 || p.getStatus() == 429;
+    return false;
+  }
 
   public PayPalClient(String clientId, String clientSecret) {
     this(clientId, clientSecret, SANDBOX_API, HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build());
@@ -52,6 +90,17 @@ public class PayPalClient {
   }
 
   private JsonNode request(String method, String path, JsonNode body, String idempotencyKey) throws Exception {
+    Callable<JsonNode> call = () -> doRequest(method, path, body, idempotencyKey);
+    if (circuitBreaker != null) call = CircuitBreaker.decorateCallable(circuitBreaker, call);
+    if (retry != null) call = Retry.decorateCallable(retry, call);
+    try {
+      return call.call();
+    } catch (CallNotPermittedException e) {
+      throw new PayPalException(503, "PAYPAL_CIRCUIT_OPEN", List.of("PAYPAL_CIRCUIT_OPEN"));
+    }
+  }
+
+  private JsonNode doRequest(String method, String path, JsonNode body, String idempotencyKey) throws Exception {
     String uri = api + path;
     HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(uri))
         .timeout(Duration.ofSeconds(20))
@@ -91,6 +140,11 @@ public class PayPalClient {
 
   public JsonNode captureOrder(String orderId) throws Exception {
     return request("POST", "/v2/checkout/orders/" + orderId + "/capture", MAPPER.createObjectNode(), "capture-" + orderId);
+  }
+
+  /** Reads an order back from PayPal. Used by the reconciler; never trusts local state alone. */
+  public JsonNode getOrder(String orderId) throws Exception {
+    return request("GET", "/v2/checkout/orders/" + orderId, null, null);
   }
 
   /** Asks PayPal's own verify endpoint whether a webhook transmission is genuine. Never trusts the payload alone. */

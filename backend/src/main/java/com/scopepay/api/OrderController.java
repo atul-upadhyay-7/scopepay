@@ -11,6 +11,7 @@ import com.scopepay.store.SandboxOrder;
 import com.scopepay.store.SandboxOrderRepository;
 import com.scopepay.store.ScopeDraft;
 import com.scopepay.store.ScopeDraftRepository;
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.servlet.http.HttpServletRequest;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -40,11 +41,12 @@ public class OrderController {
   private final AppConfig config;
   private final LedgerService ledger;
   private final OutboxService outbox;
+  private final MeterRegistry metrics;
 
   public OrderController(PayPalClient paypal, SandboxOrderRepository orders, ScopeDraftRepository drafts,
-      AppConfig config, LedgerService ledger, OutboxService outbox) {
+      AppConfig config, LedgerService ledger, OutboxService outbox, MeterRegistry metrics) {
     this.paypal = paypal; this.orders = orders; this.drafts = drafts; this.config = config;
-    this.ledger = ledger; this.outbox = outbox;
+    this.ledger = ledger; this.outbox = outbox; this.metrics = metrics;
   }
 
   private static void transition(SandboxOrder order, String to) {
@@ -92,6 +94,7 @@ public class OrderController {
     reservation.setOrderId(orderId);
     transition(reservation, "CREATED");
     orders.save(reservation);
+    metrics.counter("scopepay.orders.placed").increment();
     outbox.record("order", requestId, "ORDER_CREATED",
         Map.of("orderId", orderId, "sku", AppConfig.SKU, "amount", AppConfig.PRICE_VALUE, "currency", AppConfig.CURRENCY));
     return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("orderId", orderId));
@@ -116,6 +119,7 @@ public class OrderController {
     if (!"COMPLETED".equals(data.path("status").asText()) || !"COMPLETED".equals(capture.path("status").asText())) {
       transition(record, "PENDING_REVIEW");
       orders.save(record);
+      metrics.counter("scopepay.orders.pending_review").increment();
       outbox.record("order", record.getRequestId(), "ORDER_PENDING_REVIEW",
           Map.of("orderId", orderId, "reason", "CAPTURE_NOT_COMPLETED"));
       Map<String, Object> out = new LinkedHashMap<>();
@@ -133,6 +137,7 @@ public class OrderController {
     orders.save(record);
     String groupId = ledger.recordCapture(record.getRequestId(), record.getCaptureId(),
         new BigDecimal(AppConfig.PRICE_VALUE), AppConfig.CURRENCY);
+    metrics.counter("scopepay.orders.completed").increment();
     outbox.record("order", record.getRequestId(), "ORDER_COMPLETED",
         Map.of("orderId", orderId, "captureId", record.getCaptureId(),
             "amount", AppConfig.PRICE_VALUE, "currency", AppConfig.CURRENCY, "ledgerGroupId", groupId));
