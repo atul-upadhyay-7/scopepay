@@ -19,6 +19,13 @@ Stack: **Spring Boot 3.3 (Java 21) + PostgreSQL** backend, **React + Vite + shad
 - **Idempotency proof**: the Receipts order view can replay the same idempotency key live - the server returns the original order (HTTP 200), never a second PayPal order.
 - **Webhook intake**: `/api/webhooks/paypal` verifies each transmission with PayPal's own verify endpoint before recording anything; forged or unverifiable webhooks are rejected and logged, and a webhook never moves order state.
 - **Demo tools (local only, `DEMO_TOOLS=true`)**: webhook simulator through the real verification path, and failure-injection toggles (unclear capture, wrong amount, create outage) that drive the server's real fail-closed handling.
+- **Resilience4j retry + circuit breaker on every PayPal call**: transient faults (5xx, 429, network) retry up to 3 times with exponential backoff; 4xx business errors never retry; the breaker opens at 60% failures and fails fast. Nothing about failure handling is silently swallowed.
+- **Scheduled reconciler**: re-reads every `PENDING_REVIEW` order from PayPal each minute and completes it only when PayPal's own record proves a completed capture of exactly USD 10.00; any disagreement fails closed.
+- **Actuator + Micrometer + Prometheus**: `/actuator/health`, `/actuator/metrics` and a `/actuator/prometheus` scrape with business counters (orders placed/completed/pending_review, webhooks confirmed/rejected, relay, rate limit) - loopback only.
+- **Structured JSON logs with correlation IDs**: every request gets an `X-Correlation-Id` (echoed in the response) that appears on every log line.
+- **OpenAPI + Swagger UI**: `/v3/api-docs` and `/swagger-ui/index.html` document the API.
+- **Optional Redis rate limit (`SCOPEPAY_RATELIMIT_ENABLED=true`)**: sliding-minute per-session limit on mutating routes, fail-open when Redis is down, webhooks exempt. Off by default.
+- **Optional Kafka outbox relay (`SCOPEPAY_KAFKA_RELAY_ENABLED=true`)**: publishes committed outbox events to the `scopepay.outbox` topic in order and marks `published_at`. Postgres stays the durable outbox; with the flag off the table is the whole contract. Off by default.
 
 This is a local prototype, not a production service, escrow product, legal agreement or automatic charging system. The review acknowledges a draft for a simulated demo only, including open questions. It does not settle a client's requirements or create an obligation. No real service is sold and no real money moves.
 
@@ -31,6 +38,11 @@ Freelancers lose money twice: unclear scopes that drift into disputes, and awkwa
 - **PayPal JavaScript SDK v6 + Orders v2 REST API (sandbox)**: browser buyer approval, server-side order create/capture with idempotency identifiers, receipt verification of status, amount and currency before anything is marked complete, and webhook signature verification.
 - **Groq `openai/gpt-oss-20b`**: scope-draft extraction into a strict JSON schema, with verbatim evidence spans quoted from the brief. One fixed model and endpoint, no tool use, no automatic retries, no paid fallback; refusals and timeouts fail closed.
 - **Spring Boot 3.3 (Java 21) + Spring Data JPA + Flyway**: loopback API, session capability checks, the review gate, order state machine, double-entry ledger and transactional outbox.
+- **Resilience4j**: retry with exponential backoff and a circuit breaker around the PayPal client.
+- **Spring Actuator + Micrometer + Prometheus**: health, metrics and a scrape endpoint with business counters.
+- **springdoc-openapi**: generated OpenAPI document and Swagger UI.
+- **Optional Spring Kafka relay + Spring Data Redis rate limit**: off by default, enabled with flags, the default demo path needs only PostgreSQL. Tested against embedded Kafka (KRaft) and embedded Redis.
+- **JaCoCo**: coverage report at `backend/target/site/jacoco/index.html` after `mvn test`.
 - **PostgreSQL 17**: durable drafts, reviews, orders, ledger entries and outbox events. Migrations in `backend/src/main/resources/db/migration`.
 - **React + Vite + shadcn/ui (Tailwind v4, Radix)**: the multi-page interface - sidebar layout, evidence review, sandbox payment, receipts with tabs and the order detail dialog.
 
@@ -66,7 +78,7 @@ Never commit a filled `.env`, put secrets in screenshots or paste them into chat
 
 [Verification record](docs/VERIFICATION.md) distinguishes automated proof, scripted stand-ins and checks still pending on the owner's machine.
 
-- 75 JUnit tests pass (API, safety invariants, ledger, outbox, state machine, webhooks, AI adapter); production client build passes.
+- 90 JUnit tests pass (API, safety invariants, ledger, outbox, state machine, webhooks, AI adapter, reconciler, resilience, rate limit, Kafka relay, observability, real-PostgreSQL schema guard); production client build passes.
 - Payment safety paths (idempotent create, fail-closed capture, amount check, state machine, ledger balance, webhook verify) are covered by tests with a stubbed PayPal.
 - Screenshots in this README were taken against a scripted PayPal stand-in (test-only runner); the identical server code runs against the real sandbox with the owner's credentials.
 - The earlier Node prototype's live sandbox flow (buyer approval, capture, independent seller receipt) was verified Oct 16, 2026; the Spring Boot rebuild re-verifies live on the owner's laptop before submission.

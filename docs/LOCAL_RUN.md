@@ -116,6 +116,23 @@ Cancelled, declined, pending or uncertain outcomes are never shown as paid. Chec
 
 With `PAYPAL_WEBHOOK_ID` set, point a sandbox webhook at `http://127.0.0.1:8090/api/webhooks/paypal` for `PAYMENT.CAPTURE.COMPLETED`. The server verifies each transmission with PayPal's verify endpoint before recording `WEBHOOK_CONFIRMED` on the matching order; anything unverifiable is rejected and logged. For a local demo without a public URL, `DEMO_TOOLS=true` adds a **Simulate webhook** button on the order dialog - with real credentials PayPal correctly refuses the synthetic signature, which is the demonstration.
 
+### Optional: observability
+
+- Health: http://127.0.0.1:8090/actuator/health
+- Metrics: http://127.0.0.1:8090/actuator/metrics (try `/actuator/metrics/scopepay.orders.placed`)
+- Prometheus scrape: http://127.0.0.1:8090/actuator/prometheus
+- Swagger UI: http://127.0.0.1:8090/swagger-ui/index.html
+- Every response carries an `X-Correlation-Id` header; backend logs are structured JSON with that id on every line.
+- Coverage report after `mvn test`: `backend/target/site/jacoco/index.html`.
+
+### Optional: Redis rate limit (default off)
+
+Needs a local Redis. Free podman option: `podman run -d --name scopepay-redis -p 127.0.0.1:6379:6379 docker.io/library/redis:7-alpine`. Then set `SCOPEPAY_RATELIMIT_ENABLED=true` in `.env` and restart the backend. Mutating API calls are limited per session per minute (default 60, `SCOPEPAY_RATELIMIT_PER_MINUTE`). If Redis stops, the API keeps working (fail-open, counted in metrics). Stop anytime: `podman rm -f scopepay-redis` and remove the flag.
+
+### Optional: Kafka outbox relay (default off)
+
+Needs a local Kafka (KRaft single node is fine). Free podman option: `podman run -d --name scopepay-kafka -p 127.0.0.1:9092:9092 docker.io/apache/kafka:3.7.0`. Then set `SCOPEPAY_KAFKA_RELAY_ENABLED=true` in `.env` and restart the backend. Committed outbox events are published to the `scopepay.outbox` topic in order and marked `published_at`. If Kafka stops, events stay in Postgres and publish when it returns; with the flag off the outbox table is the whole contract. Stop anytime: `podman rm -f scopepay-kafka` and remove the flag.
+
 ### Optional: failure drills
 
 With `DEMO_TOOLS=true`, a Demo controls card on the Payment page simulates PayPal failures (unclear capture, wrong amount, create outage). The server's real safety code handles each one; nothing can mark a payment as paid.
@@ -131,6 +148,10 @@ With `DEMO_TOOLS=true`, a Demo controls card on the Payment page simulates PayPa
 - `ORIGIN_NOT_ALLOWED`: open localhost:5173, or make `APP_ORIGIN` match the port you use.
 - `PAYPAL_AUTH_FAILED`: check sandbox credentials, not production keys.
 - `PAYMENT_UNCONFIRMED`: check seller activity first. Never assume a timeout means a charge failed.
+
+## Optional: backend container image
+
+`podman build -f Containerfile -t scopepay-backend .` from the repo root builds a backend-only image (tests skipped inside the build; run them first). The client still runs with `npm run dev`. This is a convenience for judges, not a required path.
 
 ## Safety boundaries
 
