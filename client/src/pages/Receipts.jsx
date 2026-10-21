@@ -64,7 +64,7 @@ export default function Receipts(){
      <ScopeGrid rowData={data.drafts} onRowClicked={e=>setSelected(e.data)} columnDefs={[
       {headerName:'Scope',field:'scopeId',flex:0.7,minWidth:100,cellRenderer:p=><span className="font-mono text-xs">{p.value.slice(0,8)}...</span>},
       {headerName:'Summary',field:'summary',flex:1.8,minWidth:220},
-      {headerName:'State',field:'state',flex:0.7,minWidth:110,cellRenderer:p=><StateBadge state={p.value}/>,filter:true},
+      {headerName:'State',field:'state',flex:0.7,minWidth:110,cellRenderer:p=><span className="flex h-full items-center"><StateBadge state={p.value}/></span>,filter:true},
       {headerName:'Reviewed',field:'reviewedAt',flex:1,minWidth:150,valueFormatter:p=>p.value?new Date(p.value).toLocaleString():'-'}
      ]}/>
     </CardContent></Card>}
@@ -74,7 +74,7 @@ export default function Receipts(){
     <Card><CardContent className="pt-4">
      <ScopeGrid rowData={data.orders} onRowClicked={e=>setSelectedOrder(e.data)} columnDefs={[
       {headerName:'Order',field:'orderId',flex:0.9,minWidth:120,cellRenderer:p=><span className="font-mono text-xs">{p.value||'(creating)'}</span>},
-      {headerName:'State',field:'state',flex:0.7,minWidth:110,cellRenderer:p=><StateBadge state={p.value}/>,filter:true},
+      {headerName:'State',field:'state',flex:0.7,minWidth:110,cellRenderer:p=><span className="flex h-full items-center"><StateBadge state={p.value}/></span>,filter:true},
       {headerName:'Capture',field:'captureId',flex:0.9,minWidth:110,cellRenderer:p=><span className="font-mono text-xs">{p.value||'-'}</span>},
       {headerName:'Completed',field:'completedAt',flex:1,minWidth:150,valueFormatter:p=>p.value?new Date(p.value).toLocaleString():'-'}
      ]}/>
