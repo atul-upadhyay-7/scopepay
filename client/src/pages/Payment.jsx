@@ -1,7 +1,7 @@
 import React,{useState} from 'react';
 import {Link} from 'react-router-dom';
 import {useScopePay} from '../state.jsx';
-import {Eyebrow} from '../ui.jsx';
+import {Eyebrow,Reveal} from '../ui.jsx';
 import {Button} from '@/components/ui/button';
 import {Card,CardContent,CardDescription,CardHeader,CardTitle} from '@/components/ui/card';
 import {Separator} from '@/components/ui/separator';
@@ -17,13 +17,13 @@ export default function Payment(){
  const [modeBusy,setModeBusy]=useState(false);
  const MODES=[['off','Off'],['capture-pending','Capture stays unclear'],['capture-wrong-amount','Capture returns wrong amount'],['create-down','Order create fails']];
  async function pick(m){if(modeBusy)return;setModeBusy(true);try{await setFailureMode(m);setMode(m);}catch(e){}finally{setModeBusy(false);}}
- if(!review)return <Card><CardHeader>
+ if(!review)return <Reveal><Card><CardHeader>
   <Eyebrow>Step 3 - payment</Eyebrow>
   <CardTitle>Review required first</CardTitle>
-  <CardDescription>Every sandbox order needs your saved review. No review, no payment button. <Link className="font-semibold text-green-deep underline-offset-4 hover:underline" to="/review">Go to review</Link></CardDescription>
- </CardHeader></Card>;
+  <CardDescription>Every sandbox order needs your saved review. No review, no payment button. <Link className="link-underline font-semibold text-green-deep" to="/review">Go to review</Link></CardDescription>
+ </CardHeader></Card></Reveal>;
  return <>
-  <Card>
+  <Reveal><Card>
    <CardHeader className="relative">
     <Eyebrow>Step 3 - sandbox payment</Eyebrow>
     <CardTitle>One fixed test item</CardTitle>
@@ -43,8 +43,8 @@ export default function Payment(){
      {message&&<p className="mt-4 text-[13px] text-muted-foreground [overflow-wrap:anywhere]">{message}</p>}
     </div>
    </CardContent>
-  </Card>
-  {config?.demoTools&&<Card className="mt-5">
+  </Card></Reveal>
+  {config?.demoTools&&<Reveal delay={120}><Card className="card-lift mt-5">
    <CardHeader>
     <Eyebrow>Demo controls</Eyebrow>
     <CardDescription className="max-w-[620px] text-[14.5px]">Simulated PayPal failures. The scripted stand-in misbehaves; the server's real safety code - pending review, amount checks, idempotent reservations - handles every case. Nothing here can mark a payment as paid.</CardDescription>
@@ -55,12 +55,12 @@ export default function Payment(){
     </div>
     {failureMode!=='off'&&<p className="mt-3 rounded-md border border-primary/40 bg-accent px-3 py-2 text-xs text-accent-foreground">Failure simulation active: {MODES.find(([v])=>v===failureMode)[1]}. Start a checkout, then open the order on the Receipts page to see how the server handled it. Switch back to Off when done.</p>}
    </CardContent>
-  </Card>}
-  <Card className="mt-5">
+  </Card></Reveal>}
+  <Reveal delay={config?.demoTools?240:120}><Card className="card-lift mt-5">
    <CardHeader>
     <Eyebrow>What happens</Eyebrow>
     <CardDescription className="max-w-[620px] text-[14.5px]">PayPal opens its own sandbox checkout. You approve there as a test buyer. The server then captures the payment itself, checks the amount is exactly USD 10.00, and writes the receipt. An unclear answer from PayPal never becomes "paid".</CardDescription>
    </CardHeader>
-  </Card>
+  </Card></Reveal>
  </>;
 }

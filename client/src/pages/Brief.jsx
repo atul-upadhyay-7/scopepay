@@ -2,7 +2,7 @@ import React from 'react';
 import {useNavigate} from 'react-router-dom';
 import {toast} from 'sonner';
 import {useScopePay,EXAMPLE} from '../state.jsx';
-import {Eyebrow} from '../ui.jsx';
+import {Eyebrow,Reveal} from '../ui.jsx';
 import {Button} from '@/components/ui/button';
 import {Card,CardContent,CardDescription,CardHeader,CardTitle} from '@/components/ui/card';
 import {Label} from '@/components/ui/label';
@@ -15,7 +15,7 @@ export default function Brief(){
   if(draft){toast.success('Draft ready for review. Nothing is approved or charged.');navigate('/review');}
   else toast.error('No draft was accepted. The AI is not replaced by a canned result.');
  }
- return <Card>
+ return <Reveal><Card>
   <CardHeader>
    <Eyebrow>Step 1 - the brief</Eyebrow>
    <CardTitle>A synthetic brief, nothing real</CardTitle>
@@ -30,5 +30,5 @@ export default function Brief(){
    </div>
    {aiMessage&&<p className="mt-4 text-[13px] text-muted-foreground [overflow-wrap:anywhere]">{aiMessage}</p>}
   </CardContent>
- </Card>;
+ </Card></Reveal>;
 }

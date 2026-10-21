@@ -1,6 +1,6 @@
 import React,{useEffect,useState} from 'react';
 import {useScopePay} from '../state.jsx';
-import {Eyebrow} from '../ui.jsx';
+import {Eyebrow,Reveal} from '../ui.jsx';
 import {Badge} from '@/components/ui/badge';
 import {Button} from '@/components/ui/button';
 import {Card,CardContent,CardDescription,CardHeader,CardTitle} from '@/components/ui/card';
@@ -54,9 +54,9 @@ export default function Receipts(){
  if(error)return <Card><CardHeader><Eyebrow>Receipts</Eyebrow><CardTitle>Receipts unavailable</CardTitle><CardDescription>{error}</CardDescription></CardHeader></Card>;
  if(!data)return <Card><CardHeader><Eyebrow>Receipts</Eyebrow><CardTitle>Loading...</CardTitle></CardHeader></Card>;
  return <>
-  <Eyebrow>Your session's record</Eyebrow>
-  <h2 className="mt-3 font-serif text-2xl font-semibold tracking-tight">Receipts</h2>
-  <Tabs defaultValue="drafts" className="mt-5">
+  <Reveal><Eyebrow>Your session's record</Eyebrow>
+  <h2 className="mt-3 font-serif text-2xl font-semibold tracking-tight">Receipts</h2></Reveal>
+  <Reveal delay={100}><Tabs defaultValue="drafts" className="mt-5">
    <TabsList><TabsTrigger value="drafts">Drafts and reviews</TabsTrigger><TabsTrigger value="orders">Orders and captures</TabsTrigger></TabsList>
    <TabsContent value="drafts">
     {data.drafts.length===0?<Card><CardContent className="pt-6 text-sm text-muted-foreground">No drafts in this session yet.</CardContent></Card>:
@@ -80,7 +80,7 @@ export default function Receipts(){
      ]}/>
     </CardContent></Card>}
    </TabsContent>
-  </Tabs>
+  </Tabs></Reveal>
   <Dialog open={!!selected} onOpenChange={open=>!open&&setSelected(null)}>
    {selected&&<DialogContent>
     <DialogHeader>

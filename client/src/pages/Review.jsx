@@ -2,7 +2,7 @@ import React from 'react';
 import {useNavigate,Link} from 'react-router-dom';
 import {toast} from 'sonner';
 import {useScopePay} from '../state.jsx';
-import {Eyebrow} from '../ui.jsx';
+import {Eyebrow,Reveal} from '../ui.jsx';
 import {Button} from '@/components/ui/button';
 import {Card,CardContent,CardDescription,CardHeader,CardTitle} from '@/components/ui/card';
 import {Checkbox} from '@/components/ui/checkbox';
@@ -15,14 +15,14 @@ export default function Review(){
   if(r){toast.success('Review saved for this sandbox demo only.');navigate('/payment');}
   else toast.error('Review was not saved.');
  }
- if(!draft)return <Card><CardHeader>
+ if(!draft)return <Reveal><Card><CardHeader>
   <Eyebrow>Step 2 - review</Eyebrow>
   <CardTitle>No draft yet</CardTitle>
-  <CardDescription>Extract a draft from a brief first. <Link className="font-semibold text-green-deep underline-offset-4 hover:underline" to="/brief">Go to the brief</Link></CardDescription>
- </CardHeader></Card>;
+  <CardDescription>Extract a draft from a brief first. <Link className="link-underline font-semibold text-green-deep" to="/brief">Go to the brief</Link></CardDescription>
+ </CardHeader></Card></Reveal>;
  const monoH3='font-mono text-[11px] font-medium uppercase tracking-[1.8px] text-muted-foreground';
  return <>
-  <Card>
+  <Reveal><Card>
    <CardHeader>
     <Eyebrow>Step 2 - review the draft</Eyebrow>
     <CardTitle>Check every word against your brief</CardTitle>
@@ -46,8 +46,8 @@ export default function Review(){
       </li>)}
      </ul></>}
    </CardContent>
-  </Card>
-  <Card className="mt-5">
+  </Card></Reveal>
+  <Reveal delay={120}><Card className="card-lift mt-5">
    <CardContent className="pt-6 sm:pt-8">
     <div className="flex items-start gap-3">
      <Checkbox id="ack" checked={checked} onCheckedChange={v=>setChecked(v===true)}/>
@@ -56,6 +56,6 @@ export default function Review(){
     <Button className="mt-5" disabled={!checked||busy} onClick={go}>{busy?'Saving review...':'Save my review'}</Button>
     {aiMessage&&<p className="mt-4 text-[13px] text-muted-foreground [overflow-wrap:anywhere]">{aiMessage}</p>}
    </CardContent>
-  </Card>
+  </Card></Reveal>
  </>;
 }
