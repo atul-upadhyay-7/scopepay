@@ -9,12 +9,12 @@ export function Stepper({done}){
   return <li key={key} className="relative flex items-center gap-2.5 py-[5px] text-[12.5px] text-muted-foreground">
    {i<STEPS.length-1&&<span className="absolute bottom-[-4px] left-[7px] top-[26px] w-px bg-input"/>}
    <span className={cn('z-[1] inline-flex h-[15px] w-[15px] items-center justify-center rounded-full border bg-sidebar-background font-mono text-[8.5px] transition-all duration-300',
-    isDone?'border-green bg-green text-primary-foreground':current?'border-green ring-[3px] ring-accent':'border-input')}>
+    isDone?'border-ember bg-ember text-primary-foreground':current?'border-ember ring-[3px] ring-accent':'border-input')}>
     {isDone?<Check size={10} strokeWidth={3.5}/>:i+1}</span>
    <span className={cn(isDone&&'text-secondary-foreground',current&&'font-semibold text-accent-foreground')}>{label}</span>
   </li>;})}</ol>;
 }
-export function Eyebrow({children,className}){return <p className={cn('font-mono text-[10.5px] font-medium uppercase tracking-[2.2px] text-green',className)}>{children}</p>;}
+export function Eyebrow({children,className}){return <p className={cn('font-mono text-[10.5px] font-medium uppercase tracking-[2.2px] text-ember',className)}>{children}</p>;}
 
 export function Reveal({children,delay=0,className}){
  return <div className={cn('reveal',className)} style={{'--reveal-delay':delay+'ms'}}>{children}</div>;
@@ -23,4 +23,12 @@ export function Reveal({children,delay=0,className}){
 export function SplitText({text,as:Tag='span',className,wordDelay=70,startDelay=0}){
  return <Tag className={className} aria-label={text}>{text.split(' ').map((w,i)=>
   <span key={i} aria-hidden="true" className="split-word" style={{'--split-delay':(startDelay+i*wordDelay)+'ms'}}>{w}{i<text.split(' ').length-1?'\u00A0':''}</span>)}</Tag>;
+}
+
+export function Ambient(){
+ return <div aria-hidden="true" className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+  <div className="ambient-glow ambient-glow-a"/>
+  <div className="ambient-glow ambient-glow-b"/>
+  <div className="ambient-noise"/>
+ </div>;
 }

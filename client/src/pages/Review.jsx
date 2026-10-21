@@ -18,7 +18,7 @@ export default function Review(){
  if(!draft)return <Reveal><Card><CardHeader>
   <Eyebrow>Step 2 - review</Eyebrow>
   <CardTitle>No draft yet</CardTitle>
-  <CardDescription>Extract a draft from a brief first. <Link className="link-underline font-semibold text-green-deep" to="/brief">Go to the brief</Link></CardDescription>
+  <CardDescription>Extract a draft from a brief first. <Link className="link-underline font-semibold text-ember-deep" to="/brief">Go to the brief</Link></CardDescription>
  </CardHeader></Card></Reveal>;
  const monoH3='font-mono text-[11px] font-medium uppercase tracking-[1.8px] text-muted-foreground';
  return <>
@@ -34,15 +34,15 @@ export default function Review(){
     <h3 className={monoH3+' mt-7'}>Deliverables, with source evidence</h3>
     <ul className="mt-1">{draft.deliverables.map((d,i)=>
      <li key={i} className="border-t py-3.5 first:border-t-0 first:pt-2 text-[14.5px] leading-relaxed">{d.description}
-      <blockquote className="mb-0.5 mt-2 border-l-2 border-green bg-background px-3.5 py-2.5 font-mono text-[13px] leading-relaxed text-secondary-foreground">"{d.evidence}"</blockquote>
+      <blockquote className="mb-0.5 mt-2 border-l-2 border-ember bg-background px-3.5 py-2.5 font-mono text-[13px] leading-relaxed text-secondary-foreground">"{d.evidence}"</blockquote>
      </li>)}
     </ul>
     {draft.questions.length>0&&<><h3 className={monoH3+' mt-7'}>Open questions</h3>
-     <ul className="mt-2.5 list-disc space-y-1.5 pl-[18px] marker:text-green text-[14.5px] text-secondary-foreground">{draft.questions.map((q,i)=><li key={i}>{q}</li>)}</ul></>}
+     <ul className="mt-2.5 list-disc space-y-1.5 pl-[18px] marker:text-ember text-[14.5px] text-secondary-foreground">{draft.questions.map((q,i)=><li key={i}>{q}</li>)}</ul></>}
     {draft.conflicts.length>0&&<><h3 className={monoH3+' mt-7'}>Conflicts the AI did not resolve</h3>
      <ul className="mt-1">{draft.conflicts.map((c,i)=>
       <li key={i} className="border-t py-3.5 text-[14.5px] leading-relaxed">{c.description}
-       {c.evidence.map((e,j)=><blockquote key={j} className="mb-0.5 mt-2 border-l-2 border-green bg-background px-3.5 py-2.5 font-mono text-[13px] text-secondary-foreground">"{e}"</blockquote>)}
+       {c.evidence.map((e,j)=><blockquote key={j} className="mb-0.5 mt-2 border-l-2 border-ember bg-background px-3.5 py-2.5 font-mono text-[13px] text-secondary-foreground">"{e}"</blockquote>)}
       </li>)}
      </ul></>}
    </CardContent>

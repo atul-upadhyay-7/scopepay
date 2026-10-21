@@ -20,7 +20,7 @@ export default function Payment(){
  if(!review)return <Reveal><Card><CardHeader>
   <Eyebrow>Step 3 - payment</Eyebrow>
   <CardTitle>Review required first</CardTitle>
-  <CardDescription>Every sandbox order needs your saved review. No review, no payment button. <Link className="link-underline font-semibold text-green-deep" to="/review">Go to review</Link></CardDescription>
+  <CardDescription>Every sandbox order needs your saved review. No review, no payment button. <Link className="link-underline font-semibold text-ember-deep" to="/review">Go to review</Link></CardDescription>
  </CardHeader></Card></Reveal>;
  return <>
   <Reveal><Card>
@@ -35,10 +35,10 @@ export default function Payment(){
     <Separator className="mb-2"/>
     <Row label="Item">Scope review demo ({config?.sku||'sandbox-demo'})</Row>
     <Row label="Price owner">The server. Never the AI, never this page.</Row>
-    <Row label="Review"><span className="font-semibold text-green-deep">Saved for scope {review.scopeId.slice(0,8)}...</span></Row>
+    <Row label="Review"><span className="font-semibold text-ember-deep">Saved for scope {review.scopeId.slice(0,8)}...</span></Row>
     <Row label="Mode">PayPal sandbox. No real money.</Row>
     <div className="mt-5">
-     {paid?<p className="font-semibold text-green-deep">Sandbox payment completed. Capture {paid.captureId}. See it on the Receipts page.</p>
+     {paid?<p className="font-semibold text-ember-deep">Sandbox payment completed. Capture {paid.captureId}. See it on the Receipts page.</p>
       :<Button disabled={!ready} onClick={checkout}>{ready?'Pay with PayPal (sandbox)':'Preparing sandbox checkout...'}</Button>}
      {message&&<p className="mt-4 text-[13px] text-muted-foreground [overflow-wrap:anywhere]">{message}</p>}
     </div>

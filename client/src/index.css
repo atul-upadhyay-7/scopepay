@@ -2,38 +2,38 @@
 @plugin "tailwindcss-animate";
 
 :root{
- --background:#f2efe4;
- --foreground:#1b1d17;
- --card:#fbf9f0;
- --card-foreground:#1b1d17;
- --popover:#fbf9f0;
- --popover-foreground:#1b1d17;
- --primary:#17452f;
- --primary-foreground:#f7f5ea;
- --secondary:#e9e5d3;
- --secondary-foreground:#3d443a;
- --muted:#ece8d8;
- --muted-foreground:#616853;
- --accent:#e2ebd9;
- --accent-foreground:#123524;
- --destructive:#8f5211;
- --destructive-foreground:#f7f5ea;
- --border:#ddd7c3;
- --input:#c9c3ad;
- --ring:#1c5c3d;
- --green:#1c5c3d;
- --green-deep:#123524;
- --warn:#8f5211;
- --warn-soft:#f3e8d2;
+ --background:#16110e;
+ --foreground:#f4ede4;
+ --card:#1f1813;
+ --card-foreground:#f4ede4;
+ --popover:#241c16;
+ --popover-foreground:#f4ede4;
+ --primary:#ff6a2f;
+ --primary-foreground:#1d0e07;
+ --secondary:#2a211b;
+ --secondary-foreground:#d9cfc2;
+ --muted:#241c16;
+ --muted-foreground:#a39681;
+ --accent:#33241a;
+ --accent-foreground:#ffb08a;
+ --destructive:#e5484d;
+ --destructive-foreground:#fff4ec;
+ --border:#332920;
+ --input:#453729;
+ --ring:#ff6a2f;
+ --ember:#ff6a2f;
+ --ember-deep:#ffb08a;
+ --warn:#f2a33c;
+ --warn-soft:#3a2c14;
  --radius:0.5rem;
- --sidebar-background:#ebe7d7;
- --sidebar-foreground:#3d443a;
- --sidebar-primary:#17452f;
- --sidebar-primary-foreground:#f7f5ea;
- --sidebar-accent:#dde6d2;
- --sidebar-accent-foreground:#123524;
- --sidebar-border:#d8d2bd;
- --sidebar-ring:#1c5c3d;
+ --sidebar-background:#191310;
+ --sidebar-foreground:#d9cfc2;
+ --sidebar-primary:#ff6a2f;
+ --sidebar-primary-foreground:#1d0e07;
+ --sidebar-accent:#2c1f16;
+ --sidebar-accent-foreground:#ffb08a;
+ --sidebar-border:#2c241c;
+ --sidebar-ring:#ff6a2f;
 }
 
 @theme inline{
@@ -56,8 +56,8 @@
  --color-border:var(--border);
  --color-input:var(--input);
  --color-ring:var(--ring);
- --color-green:var(--green);
- --color-green-deep:var(--green-deep);
+ --color-ember:var(--ember);
+ --color-ember-deep:var(--ember-deep);
  --color-warn:var(--warn);
  --color-warn-soft:var(--warn-soft);
  --color-sidebar-background:var(--sidebar-background);
@@ -102,14 +102,27 @@
 
 /* Layered natural shadows (glass3d.dev technique: many soft layers, no blur/glass), warm ink tint. */
 @layer base{
- .shadow-card{box-shadow:0 0 1px rgb(27 29 23 / .10),0.7px 0.8px 1.6px -0.4px rgb(27 29 23 / .07),2.3px 2.6px 5px -1.2px rgb(27 29 23 / .06),6px 6.8px 13px -2.5px rgb(27 29 23 / .07)}
- .shadow-dialog{box-shadow:0 0 1px rgb(27 29 23 / .14),1.3px 1.5px 3px -0.8px rgb(27 29 23 / .10),3.9px 4.4px 8px -1.7px rgb(27 29 23 / .09),10px 11px 22px -3px rgb(27 29 23 / .12),20px 22px 44px -6px rgb(27 29 23 / .12)}
+ .shadow-card{box-shadow:0 0 1px rgb(0 0 0 / .45),0.7px 0.8px 1.6px -0.4px rgb(0 0 0 / .34),2.3px 2.6px 5px -1.2px rgb(0 0 0 / .30),6px 6.8px 13px -2.5px rgb(0 0 0 / .34)}
+ .shadow-dialog{box-shadow:0 0 1px rgb(0 0 0 / .55),1.3px 1.5px 3px -0.8px rgb(0 0 0 / .45),3.9px 4.4px 8px -1.7px rgb(0 0 0 / .38),10px 11px 22px -3px rgb(0 0 0 / .42),20px 22px 44px -6px rgb(0 0 0 / .42)}
  /* Faint dot grain (reactbits Dot Grid, static and restrained): paper texture, not a gradient wash. */
- .dot-grain{background-image:radial-gradient(circle,rgb(18 53 36 / .05) 1px,transparent 1px);background-size:18px 18px}
+ .dot-grain{background-image:radial-gradient(circle,rgb(255 138 92 / .055) 1px,transparent 1px);background-size:18px 18px}
  /* Split-text word entrance (reactbits Split Text), respects the reveal system. */
  .split-word{display:inline-block;opacity:0;transform:translateY(0.35em);animation:split-in .6s cubic-bezier(.22,1,.36,1) forwards;animation-delay:var(--split-delay,0ms)}
 }
 @keyframes split-in{to{opacity:1;transform:translateY(0)}}
 @media (prefers-reduced-motion: reduce){
  .split-word{animation:none;opacity:1;transform:none}
+}
+
+/* Ambient ember background: two slow radial glows + static grain. Transform/opacity only. */
+@layer base{
+ .ambient-glow{position:absolute;width:64vmax;height:64vmax;border-radius:9999px;will-change:transform}
+ .ambient-glow-a{top:-20vmax;left:-14vmax;background:radial-gradient(circle at center,rgb(255 106 47 / .17),transparent 62%);animation:drift-a 26s ease-in-out infinite alternate}
+ .ambient-glow-b{bottom:-24vmax;right:-16vmax;background:radial-gradient(circle at center,rgb(232 93 117 / .12),transparent 60%);animation:drift-b 34s ease-in-out infinite alternate}
+ .ambient-noise{position:absolute;inset:0;opacity:.05;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E")}
+}
+@keyframes drift-a{from{transform:translate3d(0,0,0) scale(1)}to{transform:translate3d(9vmax,6vmax,0) scale(1.12)}}
+@keyframes drift-b{from{transform:translate3d(0,0,0) scale(1.05)}to{transform:translate3d(-8vmax,-7vmax,0) scale(.94)}}
+@media (prefers-reduced-motion: reduce){
+ .ambient-glow{animation:none}
 }

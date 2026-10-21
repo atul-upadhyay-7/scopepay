@@ -28,14 +28,14 @@ export default function Home(){
   </Reveal>
   <div className="mt-2">{STEPS.map(([title,text],i)=>
    <Reveal key={i} delay={90+i*90} className="grid grid-cols-[44px_1fr] gap-4 border-b py-6">
-    <span className="pt-1 font-mono text-xs font-medium text-green">0{i+1}</span>
+    <span className="pt-1 font-mono text-xs font-medium text-ember">0{i+1}</span>
     <div><h3 className="font-serif text-[19px] font-semibold tracking-tight">{title}</h3>
     <p className="mt-1.5 max-w-[520px] text-sm leading-relaxed text-secondary-foreground">{text}</p></div>
    </Reveal>)}
   </div>
   <Reveal delay={400} className="card-lift mt-8 rounded-lg border p-6 sm:p-7">
    <Eyebrow>Honest limits</Eyebrow>
-   <ul className="mt-2.5 list-disc space-y-2 pl-[18px] marker:text-green">{LIMITS.map((l,i)=>
+   <ul className="mt-2.5 list-disc space-y-2 pl-[18px] marker:text-ember">{LIMITS.map((l,i)=>
     <li key={i} className="text-sm leading-relaxed text-secondary-foreground">{l}</li>)}</ul>
   </Reveal>
  </>;

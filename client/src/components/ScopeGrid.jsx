@@ -4,17 +4,17 @@ import {AllCommunityModule, ModuleRegistry, themeQuartz} from 'ag-grid-community
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
-// Scoped to the ScopePay paper/ink palette so the grid reads as part of the product,
+// Scoped to the ScopePay ember palette so the grid reads as part of the product,
 // not a dropped-in widget.
 const scopeTheme = themeQuartz.withParams({
-  backgroundColor: '#fbf9f0',
-  foregroundColor: '#191c16',
-  headerBackgroundColor: '#ebe7d7',
-  headerTextColor: '#3d443a',
-  borderColor: '#ddd7c3',
-  rowHoverColor: '#ece8d8',
-  selectedRowBackgroundColor: '#dde6d2',
-  accentColor: '#1c5c3d',
+  backgroundColor: '#1f1813',
+  foregroundColor: '#f4ede4',
+  headerBackgroundColor: '#191310',
+  headerTextColor: '#d9cfc2',
+  borderColor: '#332920',
+  rowHoverColor: '#241c16',
+  selectedRowBackgroundColor: '#33241a',
+  accentColor: '#ff6a2f',
   fontFamily: {googleFont: 'Inter Variable'},
   headerFontFamily: {googleFont: 'Inter Variable'},
   borderRadius: 8,

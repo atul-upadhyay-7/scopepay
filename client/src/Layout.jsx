@@ -1,7 +1,7 @@
 import React from 'react';
 import {NavLink,Outlet,useLocation} from 'react-router-dom';
 import {Sidebar,SidebarContent,SidebarFooter,SidebarGroup,SidebarGroupContent,SidebarGroupLabel,SidebarHeader,SidebarMenu,SidebarMenuButton,SidebarMenuItem,SidebarProvider,SidebarTrigger,useSidebar} from '@/components/ui/sidebar';
-import {Stepper} from './ui.jsx';
+import {Ambient,Stepper} from './ui.jsx';
 import {useScopePay} from './state.jsx';
 const LINKS=[['/', 'Home'],['/brief','New brief'],['/review','Review'],['/payment','Payment'],['/receipts','Receipts']];
 function Nav(){
@@ -19,8 +19,8 @@ function AppSidebar(){
  const {stepDone}=useScopePay();
  return <Sidebar>
   <SidebarHeader>
-   <NavLink to="/" className="font-serif text-[27px] font-semibold tracking-tight text-foreground">ScopePay<span className="text-green">.</span></NavLink>
-   <span className="inline-flex w-fit items-center rounded-[3px] border border-green px-[7px] py-1 font-mono text-[9.5px] font-medium tracking-[1.8px] text-green">SANDBOX ONLY</span>
+   <NavLink to="/" className="font-serif text-[27px] font-semibold tracking-tight text-foreground">ScopePay<span className="text-ember">.</span></NavLink>
+   <span className="inline-flex w-fit items-center rounded-[3px] border border-ember px-[7px] py-1 font-mono text-[9.5px] font-medium tracking-[1.8px] text-ember">SANDBOX ONLY</span>
   </SidebarHeader>
   <SidebarContent>
    <SidebarGroup><SidebarGroupContent><Nav/></SidebarGroupContent></SidebarGroup>
@@ -34,11 +34,12 @@ function AppSidebar(){
 }
 export default function Layout(){
  return <SidebarProvider>
+  <Ambient/>
   <AppSidebar/>
   <div className="flex min-w-0 flex-1 flex-col">
    <header className="flex items-center gap-1 border-b bg-sidebar-background px-3 py-2 md:hidden">
     <SidebarTrigger/>
-    <span className="ml-1 font-serif text-[19px] font-semibold tracking-tight">ScopePay<span className="text-green">.</span></span>
+    <span className="ml-1 font-serif text-[19px] font-semibold tracking-tight">ScopePay<span className="text-ember">.</span></span>
    </header>
    <main className="w-full max-w-[940px] flex-1 px-5 py-8 sm:px-10 sm:py-11"><Outlet/></main>
    <footer className="border-t px-5 py-5 text-[11.5px] text-muted-foreground sm:px-10 md:hidden">Local demo only. Not escrow, a legal contract or a production payment service. AI never sets prices or authorizes payment.</footer>
