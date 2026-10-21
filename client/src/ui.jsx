@@ -19,3 +19,8 @@ export function Eyebrow({children,className}){return <p className={cn('font-mono
 export function Reveal({children,delay=0,className}){
  return <div className={cn('reveal',className)} style={{'--reveal-delay':delay+'ms'}}>{children}</div>;
 }
+
+export function SplitText({text,as:Tag='span',className,wordDelay=70,startDelay=0}){
+ return <Tag className={className} aria-label={text}>{text.split(' ').map((w,i)=>
+  <span key={i} aria-hidden="true" className="split-word" style={{'--split-delay':(startDelay+i*wordDelay)+'ms'}}>{w}{i<text.split(' ').length-1?'\u00A0':''}</span>)}</Tag>;
+}

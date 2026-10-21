@@ -46,7 +46,7 @@ const Sidebar = React.forwardRef(({className,children,...props},ref)=>{
    </Dialog>);
  }
  return (
-  <aside ref={ref} className={cn('sticky top-0 hidden h-screen w-[var(--sidebar-width)] shrink-0 flex-col border-r bg-sidebar-background text-sidebar-foreground transition-[width] md:flex',!open&&'w-0 border-r-0 overflow-hidden',className)} {...props}>
+  <aside ref={ref} className={cn('dot-grain sticky top-0 hidden h-screen w-[var(--sidebar-width)] shrink-0 flex-col border-r bg-sidebar-background text-sidebar-foreground transition-[width] md:flex',!open&&'w-0 border-r-0 overflow-hidden',className)} {...props}>
    {children}
   </aside>);
 });

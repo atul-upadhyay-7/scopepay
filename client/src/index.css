@@ -2,38 +2,38 @@
 @plugin "tailwindcss-animate";
 
 :root{
- --background:#f6f5ef;
- --foreground:#191c16;
- --card:#fffefa;
- --card-foreground:#191c16;
- --popover:#fffefa;
- --popover-foreground:#191c16;
- --primary:#191c16;
- --primary-foreground:#fbfbf6;
- --secondary:#eeeee4;
- --secondary-foreground:#3c443a;
- --muted:#efeee6;
- --muted-foreground:#6b7264;
- --accent:#e9efe4;
- --accent-foreground:#143326;
- --destructive:#8a5316;
- --destructive-foreground:#fbfbf6;
- --border:#e3e1d4;
- --input:#cfccbc;
- --ring:#1d4a38;
- --green:#1d4a38;
- --green-deep:#143326;
- --warn:#8a5316;
- --warn-soft:#f6ecdc;
+ --background:#f2efe4;
+ --foreground:#1b1d17;
+ --card:#fbf9f0;
+ --card-foreground:#1b1d17;
+ --popover:#fbf9f0;
+ --popover-foreground:#1b1d17;
+ --primary:#17452f;
+ --primary-foreground:#f7f5ea;
+ --secondary:#e9e5d3;
+ --secondary-foreground:#3d443a;
+ --muted:#ece8d8;
+ --muted-foreground:#616853;
+ --accent:#e2ebd9;
+ --accent-foreground:#123524;
+ --destructive:#8f5211;
+ --destructive-foreground:#f7f5ea;
+ --border:#ddd7c3;
+ --input:#c9c3ad;
+ --ring:#1c5c3d;
+ --green:#1c5c3d;
+ --green-deep:#123524;
+ --warn:#8f5211;
+ --warn-soft:#f3e8d2;
  --radius:0.5rem;
- --sidebar-background:#f6f5ef;
- --sidebar-foreground:#3c443a;
- --sidebar-primary:#191c16;
- --sidebar-primary-foreground:#fbfbf6;
- --sidebar-accent:#e9efe4;
- --sidebar-accent-foreground:#143326;
- --sidebar-border:#e3e1d4;
- --sidebar-ring:#1d4a38;
+ --sidebar-background:#ebe7d7;
+ --sidebar-foreground:#3d443a;
+ --sidebar-primary:#17452f;
+ --sidebar-primary-foreground:#f7f5ea;
+ --sidebar-accent:#dde6d2;
+ --sidebar-accent-foreground:#123524;
+ --sidebar-border:#d8d2bd;
+ --sidebar-ring:#1c5c3d;
 }
 
 @theme inline{
@@ -98,4 +98,18 @@
  .reveal{animation:none;opacity:1}
  .card-lift,.card-lift:hover{transition:none;transform:none}
  .link-underline::after{transition:none}
+}
+
+/* Layered natural shadows (glass3d.dev technique: many soft layers, no blur/glass), warm ink tint. */
+@layer base{
+ .shadow-card{box-shadow:0 0 1px rgb(27 29 23 / .10),0.7px 0.8px 1.6px -0.4px rgb(27 29 23 / .07),2.3px 2.6px 5px -1.2px rgb(27 29 23 / .06),6px 6.8px 13px -2.5px rgb(27 29 23 / .07)}
+ .shadow-dialog{box-shadow:0 0 1px rgb(27 29 23 / .14),1.3px 1.5px 3px -0.8px rgb(27 29 23 / .10),3.9px 4.4px 8px -1.7px rgb(27 29 23 / .09),10px 11px 22px -3px rgb(27 29 23 / .12),20px 22px 44px -6px rgb(27 29 23 / .12)}
+ /* Faint dot grain (reactbits Dot Grid, static and restrained): paper texture, not a gradient wash. */
+ .dot-grain{background-image:radial-gradient(circle,rgb(18 53 36 / .05) 1px,transparent 1px);background-size:18px 18px}
+ /* Split-text word entrance (reactbits Split Text), respects the reveal system. */
+ .split-word{display:inline-block;opacity:0;transform:translateY(0.35em);animation:split-in .6s cubic-bezier(.22,1,.36,1) forwards;animation-delay:var(--split-delay,0ms)}
+}
+@keyframes split-in{to{opacity:1;transform:translateY(0)}}
+@media (prefers-reduced-motion: reduce){
+ .split-word{animation:none;opacity:1;transform:none}
 }
