@@ -85,6 +85,20 @@ class WebhookApiTest {
   }
 
   @Test
+  void verifiedRefundWebhookIsRecordedOnTheOrder() throws Exception {
+    createAndCapture();
+    mvc.perform(post("/api/orders/ORDER12345/refund", "{}")).andExpect(status().isOk());
+    String refundEvent = "{\"id\":\"EV-2\",\"event_type\":\"PAYMENT.CAPTURE.REFUNDED\",\"resource\":{\"id\":\"REFUND123\",\"status\":\"COMPLETED\"}}";
+    mvc.perform(webhook(refundEvent))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("WEBHOOK_CONFIRMED"));
+    List<String> types = outboxEvents.findByAggregateIdOrderByCreatedAtAsc(KEY)
+        .stream().map(OutboxEvent::getType).toList();
+    assertEquals(List.of("ORDER_CREATED", "ORDER_COMPLETED", "ORDER_REFUNDED", "WEBHOOK_CONFIRMED"), types);
+    assertEquals("REFUNDED", orders.findById(KEY).orElseThrow().getState(),
+        "a webhook never moves the state machine");
+  }
+
+  @Test
   void forgedWebhookIsRejectedAndRecorded() throws Exception {
     createAndCapture();
     paypal.verifyStatus = "FAILURE";

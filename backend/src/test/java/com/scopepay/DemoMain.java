@@ -55,6 +55,13 @@ public class DemoMain {
           capture.putObject("amount").put("value", "capture-wrong-amount".equals(mode()) ? "0.01" : "10.00").put("currency_code", "USD");
           return root;
         }
+        @Override
+        public com.fasterxml.jackson.databind.JsonNode refundCapture(String captureId) {
+          var root = mapper.createObjectNode();
+          root.put("id", "REF-" + captureId).put("status", "COMPLETED");
+          root.putObject("amount").put("value", "10.00").put("currency_code", "USD");
+          return root;
+        }
       };
       app.addInitializers(ctx -> ((GenericApplicationContext) ctx)
           .registerBean("demoStubPayPalClient", PayPalClient.class, () -> {

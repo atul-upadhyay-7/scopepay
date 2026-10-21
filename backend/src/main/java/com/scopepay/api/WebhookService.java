@@ -65,13 +65,20 @@ public class WebhookService {
     if (!"SUCCESS".equals(verification)) { metrics.counter("scopepay.webhooks.rejected").increment(); return reject(transmission, event, "verification status " + verification); }
 
     String eventType = event.path("event_type").asText("");
-    if (!"PAYMENT.CAPTURE.COMPLETED".equals(eventType)) {
+    boolean captureCompleted = "PAYMENT.CAPTURE.COMPLETED".equals(eventType);
+    boolean captureRefunded = "PAYMENT.CAPTURE.REFUNDED".equals(eventType);
+    if (!captureCompleted && !captureRefunded) {
       outbox.record("webhook", transmission.get("paypal-transmission-id"), "WEBHOOK_IGNORED",
           Map.of("reason", "unhandled event type", "eventType", eventType));
       return new Result(202, "WEBHOOK_IGNORED", verification, null);
     }
-    String captureId = event.path("resource").path("id").asText("");
-    Optional<SandboxOrder> match = captureId.isEmpty() ? Optional.empty() : orders.findByCaptureId(captureId);
+    // A capture-completed event keys on the capture id; a capture-refunded event keys on the
+    // refund id, which we stored when the refund was made. Both only confirm what the ledger
+    // and state machine already decided - the webhook adds evidence, never changes state.
+    String resourceId = event.path("resource").path("id").asText("");
+    Optional<SandboxOrder> match = resourceId.isEmpty() ? Optional.empty()
+        : captureCompleted ? orders.findByCaptureId(resourceId) : orders.findByRefundId(resourceId);
+    String captureId = resourceId;
     if (match.isEmpty()) {
       outbox.record("webhook", transmission.get("paypal-transmission-id"), "WEBHOOK_IGNORED",
           Map.of("reason", "verified but no matching order", "captureId", captureId));
@@ -79,8 +86,9 @@ public class WebhookService {
     }
     SandboxOrder order = match.get();
     Map<String, String> fields = new LinkedHashMap<>();
-    fields.put("captureId", captureId);
+    fields.put(captureRefunded ? "refundId" : "captureId", resourceId);
     fields.put("eventId", event.path("id").asText(""));
+    fields.put("eventType", eventType);
     fields.put("orderId", order.getOrderId() == null ? "" : order.getOrderId());
     metrics.counter("scopepay.webhooks.confirmed").increment();
     outbox.record("order", order.getRequestId(), "WEBHOOK_CONFIRMED", fields);

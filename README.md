@@ -17,7 +17,7 @@ Stack: **Spring Boot 3.3 (Java 21) + PostgreSQL** backend, **React + Vite + shad
 - **Double-entry ledger**: every completed capture posts a balanced debit/credit group in the same transaction; an unbalanced group rolls back. A refund posts the balanced reversal group, so the ledger always tells the full money story.
 - **Transactional outbox**: every state change writes its audit event atomically; the Receipts page renders this trail as a per-order payment timeline with the ledger beside it.
 - **Idempotency proof**: the Receipts order view can replay the same idempotency key live - the server returns the original order (HTTP 200), never a second PayPal order.
-- **Webhook intake**: `/api/webhooks/paypal` verifies each transmission with PayPal's own verify endpoint before recording anything; forged or unverifiable webhooks are rejected and logged, and a webhook never moves order state.
+- **Webhook intake**: `/api/webhooks/paypal` verifies each transmission with PayPal's own verify endpoint before recording anything; forged or unverifiable webhooks are rejected and logged, and a webhook never moves order state. Verified `PAYMENT.CAPTURE.COMPLETED` and `PAYMENT.CAPTURE.REFUNDED` events are matched to the order and recorded as confirmation evidence on its audit trail.
 - **Demo tools (local only, `DEMO_TOOLS=true`)**: webhook simulator through the real verification path, and failure-injection toggles (unclear capture, wrong amount, create outage) that drive the server's real fail-closed handling.
 - **Resilience4j retry + circuit breaker on every PayPal call**: transient faults (5xx, 429, network) retry up to 3 times with exponential backoff; 4xx business errors never retry; the breaker opens at 60% failures and fails fast. Nothing about failure handling is silently swallowed.
 - **Scheduled reconciler**: re-reads every `PENDING_REVIEW` order from PayPal each minute and completes it only when PayPal's own record proves a completed capture of exactly USD 10.00; any disagreement fails closed.
@@ -45,6 +45,7 @@ Freelancers lose money twice: unclear scopes that drift into disputes, and awkwa
 - **JaCoCo**: coverage report at `backend/target/site/jacoco/index.html` after `mvn test`.
 - **PostgreSQL 17**: durable drafts, reviews, orders, ledger entries and outbox events. Migrations in `backend/src/main/resources/db/migration`.
 - **React + Vite + shadcn/ui (Tailwind v4, Radix)**: the multi-page interface - sidebar layout, evidence review, sandbox payment, receipts with tabs and the order detail dialog.
+- **AG Grid Community (MIT)**: the Receipts dashboard tables - sortable, filterable, resizable columns for drafts/reviews and orders/captures, themed to match the paper-and-ink design; a row click opens the detail dialog.
 
 ## What it looks like
 
@@ -78,7 +79,7 @@ Never commit a filled `.env`, put secrets in screenshots or paste them into chat
 
 [Verification record](docs/VERIFICATION.md) distinguishes automated proof, scripted stand-ins and checks still pending on the owner's machine.
 
-- 90 JUnit tests pass (API, safety invariants, ledger, outbox, state machine, webhooks, AI adapter, reconciler, resilience, rate limit, Kafka relay, observability, real-PostgreSQL schema guard); production client build passes.
+- 96 JUnit tests pass (API, safety invariants, ledger, outbox, state machine, webhooks, AI adapter, reconciler, resilience, rate limit, Kafka relay, observability, real-PostgreSQL schema guard); production client build passes.
 - Payment safety paths (idempotent create, fail-closed capture, amount check, state machine, ledger balance, webhook verify) are covered by tests with a stubbed PayPal.
 - Screenshots in this README were taken against a scripted PayPal stand-in (test-only runner); the identical server code runs against the real sandbox with the owner's credentials.
 - The earlier Node prototype's live sandbox flow (buyer approval, capture, independent seller receipt) was verified Oct 16, 2026; the Spring Boot rebuild re-verifies live on the owner's laptop before submission.

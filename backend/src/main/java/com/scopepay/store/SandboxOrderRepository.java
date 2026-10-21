@@ -10,6 +10,7 @@ import org.springframework.stereotype.Repository;
 public interface SandboxOrderRepository extends JpaRepository<SandboxOrder, String> {
   Optional<SandboxOrder> findByOrderId(String orderId);
   Optional<SandboxOrder> findByCaptureId(String captureId);
+  Optional<SandboxOrder> findByRefundId(String refundId);
   List<SandboxOrder> findByStateAndOrderIdIsNotNull(String state);
   List<SandboxOrder> findTop20ByOwnerHashOrderByCreatedAtDesc(String ownerHash);
 }

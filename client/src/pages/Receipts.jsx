@@ -5,7 +5,8 @@ import {Badge} from '@/components/ui/badge';
 import {Button} from '@/components/ui/button';
 import {Card,CardContent,CardDescription,CardHeader,CardTitle} from '@/components/ui/card';
 import {Dialog,DialogContent,DialogDescription,DialogHeader,DialogTitle} from '@/components/ui/dialog';
-import {Table,TableBody,TableCell,TableHead,TableHeader,TableRow} from '@/components/ui/table';
+import {Table,TableBody,TableCell,TableRow} from '@/components/ui/table';
+import ScopeGrid from '@/components/ScopeGrid.jsx';
 import {Tabs,TabsContent,TabsList,TabsTrigger} from '@/components/ui/tabs';
 const EVENT_LABELS={ORDER_CREATED:'Sandbox order created',ORDER_PENDING_REVIEW:'Capture unclear - held for review, never shown as paid',ORDER_COMPLETED:'Payment captured and verified server-side',WEBHOOK_CONFIRMED:'PayPal webhook verified and recorded',WEBHOOK_REJECTED:'A webhook failed verification and was ignored',WEBHOOK_IGNORED:'A verified webhook did not match any order',ORDER_REFUNDED:'Payment refunded in the sandbox, ledger reversed',ORDER_REFUND_FAILED:'Refund answer was unclear - the order stays completed and safe'};
 const ACCOUNT_LABELS={paypal_sandbox_clearing:'PayPal sandbox clearing',demo_revenue:'Demo revenue'};
@@ -60,29 +61,23 @@ export default function Receipts(){
    <TabsContent value="drafts">
     {data.drafts.length===0?<Card><CardContent className="pt-6 text-sm text-muted-foreground">No drafts in this session yet.</CardContent></Card>:
     <Card><CardContent className="pt-4">
-     <div className="overflow-x-auto"><Table className="min-w-[560px]"><TableHeader><TableRow><TableHead>Scope</TableHead><TableHead>Summary</TableHead><TableHead>State</TableHead><TableHead>Reviewed</TableHead></TableRow></TableHeader>
-      <TableBody>{data.drafts.map(d=>
-       <TableRow key={d.scopeId} className="cursor-pointer" onClick={()=>setSelected(d)}>
-        <TableCell className="font-mono text-xs">{d.scopeId.slice(0,8)}...</TableCell>
-        <TableCell className="max-w-[280px]"><span className="line-clamp-2">{d.summary}</span></TableCell>
-        <TableCell><StateBadge state={d.state}/></TableCell>
-        <TableCell className="whitespace-nowrap text-muted-foreground">{d.reviewedAt?new Date(d.reviewedAt).toLocaleString():'-'}</TableCell>
-       </TableRow>)}
-      </TableBody></Table></div>
+     <ScopeGrid rowData={data.drafts} onRowClicked={e=>setSelected(e.data)} columnDefs={[
+      {headerName:'Scope',field:'scopeId',flex:0.7,minWidth:100,cellRenderer:p=><span className="font-mono text-xs">{p.value.slice(0,8)}...</span>},
+      {headerName:'Summary',field:'summary',flex:1.8,minWidth:220},
+      {headerName:'State',field:'state',flex:0.7,minWidth:110,cellRenderer:p=><StateBadge state={p.value}/>,filter:true},
+      {headerName:'Reviewed',field:'reviewedAt',flex:1,minWidth:150,valueFormatter:p=>p.value?new Date(p.value).toLocaleString():'-'}
+     ]}/>
     </CardContent></Card>}
    </TabsContent>
    <TabsContent value="orders">
     {data.orders.length===0?<Card><CardContent className="pt-6 text-sm text-muted-foreground">No orders in this session yet.</CardContent></Card>:
     <Card><CardContent className="pt-4">
-     <div className="overflow-x-auto"><Table className="min-w-[560px]"><TableHeader><TableRow><TableHead>Order</TableHead><TableHead>State</TableHead><TableHead>Capture</TableHead><TableHead>Completed</TableHead></TableRow></TableHeader>
-      <TableBody>{data.orders.map(o=>
-       <TableRow key={o.requestId} className="cursor-pointer" onClick={()=>setSelectedOrder(o)}>
-        <TableCell className="font-mono text-xs">{o.orderId||'(creating)'}</TableCell>
-        <TableCell><StateBadge state={o.state}/></TableCell>
-        <TableCell className="font-mono text-xs">{o.captureId||'-'}</TableCell>
-        <TableCell className="whitespace-nowrap text-muted-foreground">{o.completedAt?new Date(o.completedAt).toLocaleString():'-'}</TableCell>
-       </TableRow>)}
-      </TableBody></Table></div>
+     <ScopeGrid rowData={data.orders} onRowClicked={e=>setSelectedOrder(e.data)} columnDefs={[
+      {headerName:'Order',field:'orderId',flex:0.9,minWidth:120,cellRenderer:p=><span className="font-mono text-xs">{p.value||'(creating)'}</span>},
+      {headerName:'State',field:'state',flex:0.7,minWidth:110,cellRenderer:p=><StateBadge state={p.value}/>,filter:true},
+      {headerName:'Capture',field:'captureId',flex:0.9,minWidth:110,cellRenderer:p=><span className="font-mono text-xs">{p.value||'-'}</span>},
+      {headerName:'Completed',field:'completedAt',flex:1,minWidth:150,valueFormatter:p=>p.value?new Date(p.value).toLocaleString():'-'}
+     ]}/>
     </CardContent></Card>}
    </TabsContent>
   </Tabs>
