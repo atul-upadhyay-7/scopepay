@@ -39,6 +39,8 @@ public class SandboxOrder implements Persistable<String> {
   private String scopeId;
   @Column(name = "capture_id", length = 40)
   private String captureId;
+  @Column(name = "refund_id", length = 40)
+  private String refundId;
   @Column(name = "created_at", nullable = false)
   private OffsetDateTime createdAt = OffsetDateTime.now();
   @Column(name = "completed_at")
@@ -56,6 +58,8 @@ public class SandboxOrder implements Persistable<String> {
   public void setScopeId(String v) { scopeId = v; }
   public String getCaptureId() { return captureId; }
   public void setCaptureId(String v) { captureId = v; }
+  public String getRefundId() { return refundId; }
+  public void setRefundId(String v) { refundId = v; }
   public OffsetDateTime getCreatedAt() { return createdAt; }
   public void setCreatedAt(OffsetDateTime v) { createdAt = v; }
   public OffsetDateTime getCompletedAt() { return completedAt; }

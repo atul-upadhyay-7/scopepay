@@ -18,10 +18,12 @@ public class TestStubs {
   public static class StubPayPal extends PayPalClient {
     public final AtomicInteger creates = new AtomicInteger();
     public final AtomicInteger captures = new AtomicInteger();
+    public final AtomicInteger refunds = new AtomicInteger();
     public volatile DemoControls controls;
     public volatile Supplier<JsonNode> createBehavior = () ->
         MAPPER.createObjectNode().put("id", "ORDER12345").put("status", "CREATED");
     public volatile Supplier<JsonNode> captureBehavior = () -> completedCapture();
+    public volatile Supplier<JsonNode> refundBehavior = () -> completedRefund();
     public volatile Supplier<JsonNode> getBehavior = () ->
         MAPPER.createObjectNode().put("id", "ORDER12345").put("status", "APPROVED");
 
@@ -37,8 +39,16 @@ public class TestStubs {
       return root;
     }
 
+    static JsonNode completedRefund() {
+      var root = MAPPER.createObjectNode();
+      root.put("id", "REFUND123").put("status", "COMPLETED");
+      root.putObject("amount").put("value", "10.00").put("currency_code", "USD");
+      return root;
+    }
+
     public void reset() {
-      creates.set(0); captures.set(0);
+      creates.set(0); captures.set(0); refunds.set(0);
+      refundBehavior = TestStubs.StubPayPal::completedRefund;
       verifyStatus = "SUCCESS";
       createBehavior = () -> MAPPER.createObjectNode().put("id", "ORDER12345").put("status", "CREATED");
       captureBehavior = TestStubs.StubPayPal::completedCapture;
@@ -72,6 +82,12 @@ public class TestStubs {
         return root;
       }
       return captureBehavior.get();
+    }
+
+    @Override
+    public JsonNode refundCapture(String captureId) {
+      refunds.incrementAndGet();
+      return refundBehavior.get();
     }
 
     public volatile String verifyStatus = "SUCCESS";

@@ -7,17 +7,19 @@ import {Card,CardContent,CardDescription,CardHeader,CardTitle} from '@/component
 import {Dialog,DialogContent,DialogDescription,DialogHeader,DialogTitle} from '@/components/ui/dialog';
 import {Table,TableBody,TableCell,TableHead,TableHeader,TableRow} from '@/components/ui/table';
 import {Tabs,TabsContent,TabsList,TabsTrigger} from '@/components/ui/tabs';
-const EVENT_LABELS={ORDER_CREATED:'Sandbox order created',ORDER_PENDING_REVIEW:'Capture unclear - held for review, never shown as paid',ORDER_COMPLETED:'Payment captured and verified server-side',WEBHOOK_CONFIRMED:'PayPal webhook verified and recorded',WEBHOOK_REJECTED:'A webhook failed verification and was ignored',WEBHOOK_IGNORED:'A verified webhook did not match any order'};
+const EVENT_LABELS={ORDER_CREATED:'Sandbox order created',ORDER_PENDING_REVIEW:'Capture unclear - held for review, never shown as paid',ORDER_COMPLETED:'Payment captured and verified server-side',WEBHOOK_CONFIRMED:'PayPal webhook verified and recorded',WEBHOOK_REJECTED:'A webhook failed verification and was ignored',WEBHOOK_IGNORED:'A verified webhook did not match any order',ORDER_REFUNDED:'Payment refunded in the sandbox, ledger reversed',ORDER_REFUND_FAILED:'Refund answer was unclear - the order stays completed and safe'};
 const ACCOUNT_LABELS={paypal_sandbox_clearing:'PayPal sandbox clearing',demo_revenue:'Demo revenue'};
-const LABELS={DRAFT_REQUIRES_REVIEW:['default','Draft'],REVIEWED_FOR_SANDBOX:['ok','Reviewed'],CREATING:['default','Creating'],CREATED:['default','Order created'],PENDING_REVIEW:['warn','Needs check'],COMPLETED:['ok','Completed']};
+const LABELS={DRAFT_REQUIRES_REVIEW:['default','Draft'],REVIEWED_FOR_SANDBOX:['ok','Reviewed'],CREATING:['default','Creating'],CREATED:['default','Order created'],PENDING_REVIEW:['warn','Needs check'],COMPLETED:['ok','Completed'],REFUNDED:['default','Refunded']};
 function StateBadge({state}){const [variant,label]=LABELS[state]||['default',state];return <Badge variant={variant}>{label}</Badge>;}
 export default function Receipts(){
- const {loadReceipts,replayOrder,simulateWebhook,config}=useScopePay();
+ const {loadReceipts,replayOrder,refundOrder,simulateWebhook,config}=useScopePay();
  const [data,setData]=useState(null),[error,setError]=useState('');
  const [selected,setSelected]=useState(null);
  const [selectedOrder,setSelectedOrder]=useState(null);
  const [replayResult,setReplayResult]=useState(null);
  const [replaying,setReplaying]=useState(false);
+ const [refunding,setRefunding]=useState(false);
+ const [refundResult,setRefundResult]=useState(null);
  const [webhookResult,setWebhookResult]=useState(null);
  const [simulating,setSimulating]=useState(false);
  async function simulate(){if(!selectedOrder||simulating)return;setSimulating(true);setWebhookResult(null);
@@ -28,6 +30,15 @@ export default function Receipts(){
    else setWebhookResult({ok:false,text:`Webhook simulation answered: ${r.data.status||r.data.error||('HTTP '+r.status)}. Nothing about the order changed.`});
   }catch(e){setWebhookResult({ok:false,text:`Simulation failed: ${e.message}. Nothing about the order changed.`});}
   finally{setSimulating(false);}}
+ async function refund(){if(!selectedOrder||refunding)return;setRefunding(true);setRefundResult(null);
+  try{const r=await refundOrder(selectedOrder);
+   if(r.status===200&&r.data.status==='REFUNDED'){
+    const fresh=await loadReceipts();const updated=fresh.orders.find(x=>x.requestId===selectedOrder.requestId);if(updated)setSelectedOrder(updated);
+    setRefundResult({ok:true,text:`Refunded in the sandbox (refund ${r.data.refundId}). The ledger below now shows the reversal, and the state machine moved this order to Refunded. A second refund click returns the same receipt, never a second refund.`});
+   }else if(r.status===409){setRefundResult({ok:false,text:`The server refused the refund: ${r.data.error||'ORDER_NOT_COMPLETED'}. Only a completed sandbox payment can be refunded.`});}
+   else{setRefundResult({ok:false,text:`Refund answer was unclear (HTTP ${r.status}: ${r.data.error||'unknown'}). The order stays completed; nothing was assumed.`});}
+  }catch(e){setRefundResult({ok:false,text:`Refund failed: ${e.message}. The order was not treated as refunded.`});}
+  finally{setRefunding(false);}}
  async function replay(){if(!selectedOrder||replaying)return;setReplaying(true);setReplayResult(null);
   try{const r=await replayOrder(selectedOrder);
    if(r.status===200&&r.data.orderId&&r.data.orderId===selectedOrder.orderId){
@@ -106,6 +117,7 @@ export default function Receipts(){
          <div className="font-medium">{EVENT_LABELS[e.type]||e.type}</div>
          <div className="font-mono text-xs text-muted-foreground">{new Date(e.at).toLocaleString()}</div>
          {e.type==='ORDER_COMPLETED'&&<div className="mt-0.5 font-mono text-xs text-muted-foreground">capture {e.payload.captureId} - {e.payload.amount} {e.payload.currency}</div>}
+         {e.type==='ORDER_REFUNDED'&&<div className="mt-0.5 font-mono text-xs text-muted-foreground">refund {e.payload.refundId} - {e.payload.amount} {e.payload.currency} reversed</div>}
          {e.type==='ORDER_PENDING_REVIEW'&&<div className="mt-0.5 text-xs text-muted-foreground">An unclear PayPal answer never becomes "paid". A person must check it.</div>}
         </li>)}
        </ol>}
@@ -129,10 +141,12 @@ export default function Receipts(){
      {selectedOrder.orderId&&<div className="border-t border-border pt-3">
       <div className="flex flex-wrap gap-2">
        <Button variant="outline" size="sm" onClick={replay} disabled={replaying}>{replaying?'Replaying...':'Replay this request'}</Button>
+       {selectedOrder.state==='COMPLETED'&&<Button variant="outline" size="sm" onClick={refund} disabled={refunding}>{refunding?'Refunding...':'Refund this payment'}</Button>}
        {config?.demoTools&&selectedOrder.captureId&&<Button variant="outline" size="sm" onClick={simulate} disabled={simulating}>{simulating?'Simulating...':'Simulate webhook'}</Button>}
       </div>
       <p className="mt-1.5 text-xs text-muted-foreground">Replay sends the same idempotency key again to prove a retry cannot double-charge.{config?.demoTools&&selectedOrder.captureId?' Simulate webhook sends a synthetic PayPal webhook through the real verification path.':''}</p>
       {replayResult&&<p className={`mt-2 rounded-md border px-3 py-2 text-xs ${replayResult.ok?'border-primary/40 bg-accent text-accent-foreground':'border-destructive/40 bg-destructive/10 text-foreground'}`}>{replayResult.text}</p>}
+      {refundResult&&<p className={`mt-2 rounded-md border px-3 py-2 text-xs ${refundResult.ok?'border-primary/40 bg-accent text-accent-foreground':'border-destructive/40 bg-destructive/10 text-foreground'}`}>{refundResult.text}</p>}
       {webhookResult&&<p className={`mt-2 rounded-md border px-3 py-2 text-xs ${webhookResult.ok?'border-primary/40 bg-accent text-accent-foreground':'border-destructive/40 bg-destructive/10 text-foreground'}`}>{webhookResult.text}</p>}
      </div>}
     </div>

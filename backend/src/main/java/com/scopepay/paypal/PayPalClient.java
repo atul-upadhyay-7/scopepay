@@ -142,6 +142,12 @@ public class PayPalClient {
     return request("POST", "/v2/checkout/orders/" + orderId + "/capture", MAPPER.createObjectNode(), "capture-" + orderId);
   }
 
+  /** Refunds a completed capture in full. Idempotent: PayPal-Request-Id ties retries to one refund. */
+  public JsonNode refundCapture(String captureId) throws Exception {
+    return request("POST", "/v2/payments/captures/" + captureId + "/refunds", MAPPER.createObjectNode(),
+        "refund-" + captureId);
+  }
+
   /** Reads an order back from PayPal. Used by the reconciler; never trusts local state alone. */
   public JsonNode getOrder(String orderId) throws Exception {
     return request("GET", "/v2/checkout/orders/" + orderId, null, null);

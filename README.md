@@ -11,10 +11,10 @@ Stack: **Spring Boot 3.3 (Java 21) + PostgreSQL** backend, **React + Vite + shad
 - Groq adapter for `openai/gpt-oss-20b`, strict JSON schema, separate system/brief messages, fixed endpoint, no tools or automatic retry, no paid fallback.
 - Explicit review checkbox and server-saved review tied to the browser session in PostgreSQL.
 - Server-enforced reviewed-scope gate before creating the fixed USD 10.00 demo order.
-- PayPal sandbox SDK v6, Orders v2 create/capture, browser buyer approval, server-owned amount, session capability/origin checks, idempotency and stored completion receipt.
+- PayPal sandbox SDK v6, Orders v2 create/capture, full-capture refunds, browser buyer approval, server-owned amount, session capability/origin checks, idempotency and stored completion receipt.
 - Cancelled, declined, pending and uncertain outcomes are never marked completed.
 - **Order state machine**: only `CREATING -> CREATED -> COMPLETED | PENDING_REVIEW -> COMPLETED`; anything else fails closed.
-- **Double-entry ledger**: every completed capture posts a balanced debit/credit group in the same transaction; an unbalanced group rolls back.
+- **Double-entry ledger**: every completed capture posts a balanced debit/credit group in the same transaction; an unbalanced group rolls back. A refund posts the balanced reversal group, so the ledger always tells the full money story.
 - **Transactional outbox**: every state change writes its audit event atomically; the Receipts page renders this trail as a per-order payment timeline with the ledger beside it.
 - **Idempotency proof**: the Receipts order view can replay the same idempotency key live - the server returns the original order (HTTP 200), never a second PayPal order.
 - **Webhook intake**: `/api/webhooks/paypal` verifies each transmission with PayPal's own verify endpoint before recording anything; forged or unverifiable webhooks are rejected and logged, and a webhook never moves order state.
@@ -35,7 +35,7 @@ Freelancers lose money twice: unclear scopes that drift into disputes, and awkwa
 
 ## Built with, and how each tool is used
 
-- **PayPal JavaScript SDK v6 + Orders v2 REST API (sandbox)**: browser buyer approval, server-side order create/capture with idempotency identifiers, receipt verification of status, amount and currency before anything is marked complete, and webhook signature verification.
+- **PayPal JavaScript SDK v6 + Orders v2 REST API (sandbox)**: browser buyer approval, server-side order create/capture with idempotency identifiers, receipt verification of status, amount and currency before anything is marked complete, full refunds of completed captures through the Payments v2 refunds endpoint with their own idempotency keys, and webhook signature verification.
 - **Groq `openai/gpt-oss-20b`**: scope-draft extraction into a strict JSON schema, with verbatim evidence spans quoted from the brief. One fixed model and endpoint, no tool use, no automatic retries, no paid fallback; refusals and timeouts fail closed.
 - **Spring Boot 3.3 (Java 21) + Spring Data JPA + Flyway**: loopback API, session capability checks, the review gate, order state machine, double-entry ledger and transactional outbox.
 - **Resilience4j**: retry with exponential backoff and a circuit breaker around the PayPal client.

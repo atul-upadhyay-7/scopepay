@@ -146,4 +146,50 @@ public class OrderController {
     out.put("captureId", record.getCaptureId());
     return ResponseEntity.ok(out);
   }
+
+  @PostMapping("/api/orders/{orderId}/refund")
+  @Transactional
+  public ResponseEntity<Map<String, Object>> refund(@PathVariable String orderId, HttpServletRequest request) throws Exception {
+    if (!ORDER_PATTERN.matcher(orderId).matches()) throw new ScopeException("INVALID_ORDER", 400);
+    String owner = SessionGate.ownerHash(request);
+    SandboxOrder record = orders.findByOrderId(orderId)
+        .filter(o -> owner.equals(o.getOwnerHash()))
+        .orElseThrow(() -> new ScopeException("ORDER_NOT_FOUND", 404));
+    if (OrderStates.REFUNDED.equals(record.getState())) {
+      Map<String, Object> out = new LinkedHashMap<>();
+      out.put("status", "REFUNDED");
+      out.put("refundId", record.getRefundId());
+      return ResponseEntity.ok(out);
+    }
+    if (!OrderStates.COMPLETED.equals(record.getState())) {
+      Map<String, Object> out = new LinkedHashMap<>();
+      out.put("error", "ORDER_NOT_COMPLETED");
+      out.put("status", record.getState());
+      return ResponseEntity.status(HttpStatus.CONFLICT).body(out);
+    }
+    JsonNode data = paypal.refundCapture(record.getCaptureId());
+    if (!"COMPLETED".equals(data.path("status").asText())) {
+      metrics.counter("scopepay.orders.refund_failed").increment();
+      outbox.record("order", record.getRequestId(), "ORDER_REFUND_FAILED",
+          Map.of("orderId", orderId, "captureId", record.getCaptureId(), "reason", "REFUND_NOT_COMPLETED"));
+      Map<String, Object> out = new LinkedHashMap<>();
+      out.put("error", "REFUND_NOT_COMPLETED");
+      out.put("status", record.getState());
+      return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(out);
+    }
+    String refundId = data.path("id").asText();
+    transition(record, OrderStates.REFUNDED);
+    record.setRefundId(refundId);
+    orders.save(record);
+    String groupId = ledger.recordRefund(record.getRequestId(), refundId,
+        new BigDecimal(AppConfig.PRICE_VALUE), AppConfig.CURRENCY);
+    metrics.counter("scopepay.orders.refunded").increment();
+    outbox.record("order", record.getRequestId(), "ORDER_REFUNDED",
+        Map.of("orderId", orderId, "captureId", record.getCaptureId(), "refundId", refundId,
+            "amount", AppConfig.PRICE_VALUE, "currency", AppConfig.CURRENCY, "ledgerGroupId", groupId));
+    Map<String, Object> out = new LinkedHashMap<>();
+    out.put("status", "REFUNDED");
+    out.put("refundId", refundId);
+    return ResponseEntity.ok(out);
+  }
 }

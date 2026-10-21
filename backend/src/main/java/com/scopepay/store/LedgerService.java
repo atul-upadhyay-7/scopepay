@@ -27,6 +27,15 @@ public class LedgerService {
     return groupId;
   }
 
+  @Transactional
+  public String recordRefund(String requestId, String refundId, BigDecimal amount, String currency) {
+    String groupId = UUID.randomUUID().toString();
+    write(groupId, requestId, REVENUE, "DEBIT", amount, currency, "Sandbox refund " + refundId);
+    write(groupId, requestId, CLEARING, "CREDIT", amount, currency, "Refund reverses sandbox capture");
+    assertBalanced(groupId);
+    return groupId;
+  }
+
   private void write(String groupId, String requestId, String account, String direction,
       BigDecimal amount, String currency, String memo) {
     LedgerEntry e = new LedgerEntry();
