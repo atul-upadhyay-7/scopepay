@@ -26,7 +26,7 @@ const SidebarProvider = React.forwardRef(({className,style,children,...props},re
  return (
   <SidebarContext.Provider value={value}>
    <TooltipProvider delayDuration={0}>
-    <div ref={ref} style={{'--sidebar-width':SIDEBAR_WIDTH,...style}} className={cn('group/sidebar-wrapper flex min-h-screen w-full',className)} {...props}>
+    <div ref={ref} style={{'--sidebar-width':SIDEBAR_WIDTH,...style}} className={cn('group/sidebar-wrapper relative flex min-h-screen w-full before:absolute before:inset-y-0 before:left-0 before:hidden before:w-[var(--sidebar-width)] before:border-r before:border-sidebar-border before:bg-sidebar-background before:md:block',className)} {...props}>
      {children}
     </div>
    </TooltipProvider>

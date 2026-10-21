@@ -26,7 +26,7 @@ export function SplitText({text,as:Tag='span',className,wordDelay=70,startDelay=
 }
 
 export function Ambient(){
- return <div aria-hidden="true" className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+ return <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
   <div className="ambient-glow ambient-glow-a"/>
   <div className="ambient-glow ambient-glow-b"/>
   <div className="ambient-noise"/>
