@@ -18,6 +18,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.kafka.test.EmbeddedKafkaBroker;
 import org.springframework.kafka.test.context.EmbeddedKafka;
 import org.springframework.kafka.test.utils.KafkaTestUtils;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 
 @SpringBootTest(properties = {"PAYPAL_CLIENT_ID=test-public-id", "scopepay.kafka-relay.enabled=true",
@@ -25,6 +26,7 @@ import org.springframework.test.context.ActiveProfiles;
 @ActiveProfiles("test")
 @Import(TestStubs.class)
 @EmbeddedKafka(topics = {"scopepay.outbox"}, partitions = 1)
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class KafkaOutboxRelayTest {
 
   @Autowired EmbeddedKafkaBroker broker;
