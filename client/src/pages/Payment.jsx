@@ -1,7 +1,8 @@
 import React,{useState} from 'react';
 import {Link} from 'react-router-dom';
 import {useScopePay} from '../state.jsx';
-import {Eyebrow,Reveal} from '../ui.jsx';
+import {Eyebrow,Reveal,CountUp} from '../ui.jsx';
+import {CheckCircle2} from 'lucide-react';
 import {Button} from '@/components/ui/button';
 import {Card,CardContent,CardDescription,CardHeader,CardTitle} from '@/components/ui/card';
 import {Separator} from '@/components/ui/separator';
@@ -27,7 +28,7 @@ export default function Payment(){
    <CardHeader className="relative">
     <Eyebrow>Step 3 - sandbox payment</Eyebrow>
     <CardTitle>One fixed test item</CardTitle>
-    <div className="mt-4 font-serif text-[30px] font-medium tracking-tight sm:absolute sm:right-8 sm:top-8 sm:mt-0 sm:text-right">$10.00
+    <div className="mt-4 font-serif text-[30px] font-medium tracking-tight tabular-nums sm:absolute sm:right-8 sm:top-8 sm:mt-0 sm:text-right">$<CountUp value={10} decimals={2}/>
      <span className="ml-2 font-mono text-[10px] font-medium uppercase tracking-[1.5px] text-muted-foreground sm:ml-0 sm:mt-0.5 sm:block">USD, sandbox</span>
     </div>
    </CardHeader>
@@ -38,7 +39,10 @@ export default function Payment(){
     <Row label="Review"><span className="font-semibold text-ember-deep">Saved for scope {review.scopeId.slice(0,8)}...</span></Row>
     <Row label="Mode">PayPal sandbox. No real money.</Row>
     <div className="mt-5">
-     {paid?<p className="font-semibold text-ember-deep">Sandbox payment completed. Capture {paid.captureId}. See it on the Receipts page.</p>
+     {paid?<div className="success-pop flex items-start gap-3 rounded-md border border-primary/40 bg-accent px-4 py-3.5">
+       <span className="success-ring mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ember text-primary-foreground"><CheckCircle2 size={13} strokeWidth={3}/></span>
+       <p className="font-semibold text-ember-deep">Sandbox payment completed. Capture <span className="font-mono text-[13px]">{paid.captureId}</span>. See it on the Receipts page.</p>
+      </div>
       :<Button disabled={!ready} onClick={checkout}>{ready?'Pay with PayPal (sandbox)':'Preparing sandbox checkout...'}</Button>}
      {message&&<p className="mt-4 text-[13px] text-muted-foreground [overflow-wrap:anywhere]">{message}</p>}
     </div>

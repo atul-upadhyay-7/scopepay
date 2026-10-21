@@ -33,7 +33,7 @@ export default function Review(){
     <p className="mt-2.5 max-w-[620px] text-[14.5px] leading-relaxed text-secondary-foreground">{draft.summary}</p>
     <h3 className={monoH3+' mt-7'}>Deliverables, with source evidence</h3>
     <ul className="mt-1">{draft.deliverables.map((d,i)=>
-     <li key={i} className="border-t py-3.5 first:border-t-0 first:pt-2 text-[14.5px] leading-relaxed">{d.description}
+     <li key={i} className="reveal border-t py-3.5 first:border-t-0 first:pt-2 text-[14.5px] leading-relaxed" style={{'--reveal-delay':(160+i*70)+'ms'}}>{d.description}
       <blockquote className="mb-0.5 mt-2 border-l-2 border-ember bg-background px-3.5 py-2.5 font-mono text-[13px] leading-relaxed text-secondary-foreground">"{d.evidence}"</blockquote>
      </li>)}
     </ul>
@@ -41,7 +41,7 @@ export default function Review(){
      <ul className="mt-2.5 list-disc space-y-1.5 pl-[18px] marker:text-ember text-[14.5px] text-secondary-foreground">{draft.questions.map((q,i)=><li key={i}>{q}</li>)}</ul></>}
     {draft.conflicts.length>0&&<><h3 className={monoH3+' mt-7'}>Conflicts the AI did not resolve</h3>
      <ul className="mt-1">{draft.conflicts.map((c,i)=>
-      <li key={i} className="border-t py-3.5 text-[14.5px] leading-relaxed">{c.description}
+      <li key={i} className="reveal border-t py-3.5 text-[14.5px] leading-relaxed" style={{'--reveal-delay':(160+i*70)+'ms'}}>{c.description}
        {c.evidence.map((e,j)=><blockquote key={j} className="mb-0.5 mt-2 border-l-2 border-ember bg-background px-3.5 py-2.5 font-mono text-[13px] text-secondary-foreground">"{e}"</blockquote>)}
       </li>)}
      </ul></>}

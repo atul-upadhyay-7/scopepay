@@ -126,3 +126,30 @@
 @media (prefers-reduced-motion: reduce){
  .ambient-glow{animation:none}
 }
+
+/* Animation round: ember particle field, aurora band, page transitions, success pop. */
+
+/* Rising ember particles (reactbits Particles, pared back): transform/opacity only,
+   positions and timing vary per particle via inline CSS vars. */
+@layer base{
+ .ember-particle{position:absolute;bottom:-4vh;left:var(--p-x,50%);width:var(--p-size,3px);height:var(--p-size,3px);border-radius:9999px;background:radial-gradient(circle,rgb(255 158 102 / .85),rgb(255 106 47 / 0) 72%);opacity:0;will-change:transform,opacity;animation:particle-rise var(--p-dur,24s) linear infinite;animation-delay:var(--p-delay,0s)}
+ .ambient-aurora{position:absolute;top:-46vmax;left:50%;width:160vmax;height:74vmax;background:radial-gradient(ellipse 46% 44% at 50% 52%,rgb(255 106 47 / .085),rgb(232 93 117 / .045) 46%,transparent 68%);will-change:transform;animation:aurora-sway 42s ease-in-out infinite alternate}
+ .page-enter{animation:page-in .38s cubic-bezier(.22,1,.36,1)}
+ .success-pop{animation:pop-in .5s cubic-bezier(.34,1.56,.64,1)}
+ .success-ring{position:relative}
+ .success-ring::before{content:"";position:absolute;inset:-7px;border-radius:9999px;border:1.5px solid rgb(255 106 47 / .55);animation:ring-pulse 2.6s ease-out infinite}
+}
+@keyframes particle-rise{
+ 0%{opacity:0;transform:translate3d(0,0,0) scale(1)}
+ 9%{opacity:var(--p-op,.45)}
+ 82%{opacity:var(--p-op,.45)}
+ 100%{opacity:0;transform:translate3d(var(--p-drift,4vw),-112vh,0) scale(.55)}
+}
+@keyframes aurora-sway{from{transform:translate3d(-56%,0,0) rotate(-5deg)}to{transform:translate3d(-44%,2vmax,0) rotate(5deg)}}
+@keyframes page-in{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pop-in{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}
+@keyframes ring-pulse{0%{opacity:.8;transform:scale(.82)}70%{opacity:0;transform:scale(1.45)}100%{opacity:0;transform:scale(1.45)}}
+@media (prefers-reduced-motion: reduce){
+ .ember-particle,.ambient-aurora,.page-enter,.success-pop{animation:none}
+ .success-ring::before{animation:none;opacity:0}
+}

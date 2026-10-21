@@ -33,6 +33,7 @@ function AppSidebar(){
  </Sidebar>;
 }
 export default function Layout(){
+ const {pathname}=useLocation();
  return <SidebarProvider>
   <Ambient/>
   <AppSidebar/>
@@ -41,7 +42,7 @@ export default function Layout(){
     <SidebarTrigger/>
     <span className="ml-1 font-serif text-[19px] font-semibold tracking-tight">ScopePay<span className="text-ember">.</span></span>
    </header>
-   <main className="w-full max-w-[940px] flex-1 px-5 py-8 sm:px-10 sm:py-11"><Outlet/></main>
+   <main className="w-full max-w-[940px] flex-1 px-5 py-8 sm:px-10 sm:py-11"><div key={pathname} className="page-enter"><Outlet/></div></main>
    <footer className="border-t px-5 py-5 text-[11.5px] text-muted-foreground sm:px-10 md:hidden">Local demo only. Not escrow, a legal contract or a production payment service. AI never sets prices or authorizes payment.</footer>
   </div>
  </SidebarProvider>;

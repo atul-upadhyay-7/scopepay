@@ -108,7 +108,7 @@ export default function Receipts(){
       {(!selectedOrder.timeline||selectedOrder.timeline.length===0)?
        <p className="mt-1 text-muted-foreground">No server events recorded yet.</p>:
        <ol className="mt-2 space-y-2 border-l-2 border-border pl-3">
-        {selectedOrder.timeline.map((e,i)=><li key={i}>
+        {selectedOrder.timeline.map((e,i)=><li key={i} className="reveal" style={{'--reveal-delay':(i*80)+'ms'}}>
          <div className="font-medium">{EVENT_LABELS[e.type]||e.type}</div>
          <div className="font-mono text-xs text-muted-foreground">{new Date(e.at).toLocaleString()}</div>
          {e.type==='ORDER_COMPLETED'&&<div className="mt-0.5 font-mono text-xs text-muted-foreground">capture {e.payload.captureId} - {e.payload.amount} {e.payload.currency}</div>}
