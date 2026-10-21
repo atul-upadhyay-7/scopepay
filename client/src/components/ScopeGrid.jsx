@@ -18,7 +18,7 @@ const scopeTheme = themeQuartz.withParams({
   fontFamily: {googleFont: 'Inter Variable'},
   headerFontFamily: {googleFont: 'Inter Variable'},
   borderRadius: 8,
-  wrapperBorderRadius: 8,
+  wrapperBorder: false,
   rowHeight: 44,
   headerHeight: 40,
 });
