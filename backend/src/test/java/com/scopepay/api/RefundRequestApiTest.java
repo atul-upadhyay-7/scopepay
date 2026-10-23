@@ -216,32 +216,43 @@ class RefundRequestApiTest {
     mvc.perform(post("/api/orders/ORDER12345/refund-requests",
         "{\"amount\":\"6.50\",\"reason\":\"r\",\"deliveryText\":\"" + DELIVERY + "\"}"))
         .andExpect(status().isCreated());
-    // Retrying the UNCLEAR row itself stays allowed: it never counts against its own retry.
-    paypal.partialRefundBehavior = null;
+    // The unknown-outcome row itself can never be retried: a second POST could double-refund.
+    int attempts = paypal.refunds.get();
     mvc.perform(post("/api/refund-requests/" + id + "/approve", "{\"acknowledge\":true}"))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$.state").value("COMPLETED"));
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.error").value("REFUND_OUTCOME_UNKNOWN"));
+    assertEquals(attempts, paypal.refunds.get(), "no second remote call for an unknown outcome");
+    assertEquals("UNCLEAR", refundRequests.findById(id).orElseThrow().getState());
   }
 
   @Test
-  void retryAfterPayPalIdempotencyWindowIsBlocked() throws Exception {
+  void unknownOutcomeRetryIsBlockedImmediatelyAndLater() throws Exception {
     createScopeAndCapture();
-    paypal.partialRefundBehavior = () -> TestStubs.MAPPER.createObjectNode().put("status", "PENDING");
+    // Network-ambiguous attempt: the remote call throws after the first-attempt marker is
+    // committed, so the row lands in UNCLEAR (never back in a retryable DRAFT).
+    paypal.partialRefundBehavior = () -> { throw new RuntimeException("connection reset"); };
     String id = createRequest();
     mvc.perform(post("/api/refund-requests/" + id + "/approve", "{\"acknowledge\":true}"))
-        .andExpect(status().isConflict());
-    // PayPal documents no guaranteed retention minimum for a refund PayPal-Request-Id ("up to
-    // 45 days" is a maximum; the Orders reference states 6 hours). We treat 6 hours as the
-    // safe replay bound: beyond it the retry may be a new attempt, so block, stay UNCLEAR.
+        .andExpect(status().isBadGateway())
+        .andExpect(jsonPath("$.error").value("REFUND_OUTCOME_UNKNOWN"));
     com.scopepay.store.RefundRequest row = refundRequests.findById(id).orElseThrow();
-    row.setApprovedAt(java.time.OffsetDateTime.now().minus(7, java.time.temporal.ChronoUnit.HOURS));
-    refundRequests.save(row);
-    int attemptsBefore = paypal.refunds.get();
+    assertEquals("UNCLEAR", row.getState());
+    assertNull(row.getPaypalRefundId());
+    assertNotNull(row.getApprovedAt(), "first-attempt marker committed immutably");
+    // PayPal documents no guaranteed retention for replaying a refund PayPal-Request-Id, so no
+    // retry is permitted at ANY age - immediately or long after. Manual resolution at PayPal.
+    paypal.partialRefundBehavior = null;
+    int attempts = paypal.refunds.get();
     mvc.perform(post("/api/refund-requests/" + id + "/approve", "{\"acknowledge\":true}"))
         .andExpect(status().isConflict())
-        .andExpect(jsonPath("$.error").value("REFUND_RETRY_WINDOW_EXPIRED"));
+        .andExpect(jsonPath("$.error").value("REFUND_OUTCOME_UNKNOWN"));
+    row.setApprovedAt(java.time.OffsetDateTime.now().minus(7, java.time.temporal.ChronoUnit.HOURS));
+    refundRequests.save(row);
+    mvc.perform(post("/api/refund-requests/" + id + "/approve", "{\"acknowledge\":true}"))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.error").value("REFUND_OUTCOME_UNKNOWN"));
+    assertEquals(attempts, paypal.refunds.get(), "no second remote call at any age");
     assertEquals("UNCLEAR", refundRequests.findById(id).orElseThrow().getState());
-    assertEquals(attemptsBefore, paypal.refunds.get(), "no new attempt after the idempotency window");
   }
 
   @Test
@@ -329,8 +340,10 @@ class RefundRequestApiTest {
   }
 
   @Test
-  void unclearWithoutRefundIdCanRetryWithSameAttemptKey() throws Exception {
+  void unclearWithoutRefundIdNeverRetries() throws Exception {
     createScopeAndCapture();
+    // Response-ambiguous attempt (PENDING, no refund id): same rule as the exception path -
+    // no retry at any age, the reserved amount and immutable attempt key stay untouched.
     paypal.partialRefundBehavior = () -> TestStubs.MAPPER.createObjectNode().put("status", "PENDING");
     String id = createRequest();
     mvc.perform(post("/api/refund-requests/" + id + "/approve", "{\"acknowledge\":true}"))
@@ -338,11 +351,12 @@ class RefundRequestApiTest {
     org.junit.jupiter.api.Assertions.assertEquals("UNCLEAR", refundRequests.findById(id).orElseThrow().getState());
     org.junit.jupiter.api.Assertions.assertNull(refundRequests.findById(id).orElseThrow().getPaypalRefundId());
     paypal.partialRefundBehavior = TestStubs.StubPayPal::defaultPartialRefund;
+    int attempts = paypal.refunds.get();
     mvc.perform(post("/api/refund-requests/" + id + "/approve", "{\"acknowledge\":true}"))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$.state").value("COMPLETED"));
-    org.junit.jupiter.api.Assertions.assertEquals(id, paypal.lastPartialKey,
-        "the retry replays the same PayPal-Request-Id, so PayPal cannot double-refund");
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.error").value("REFUND_OUTCOME_UNKNOWN"));
+    org.junit.jupiter.api.Assertions.assertEquals(attempts, paypal.refunds.get(),
+        "no second remote call: PayPal guarantees no replay retention for this operation");
   }
 
   @Test

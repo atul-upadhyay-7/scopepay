@@ -133,21 +133,19 @@ public class RefundRequestController {
     if (RefundRequest.COMPLETED.equals(row.getState())) return ResponseEntity.ok(view(row));
     // DRAFT rows, and UNCLEAR rows with no PayPal refund id (nothing reached PayPal as far as we
     // can prove), may (re-)send: the same PayPal-Request-Id replays one attempt, never two.
-    boolean retryable = RefundRequest.DRAFT.equals(row.getState())
-        || (RefundRequest.UNCLEAR.equals(row.getState()) && row.getPaypalRefundId() == null);
-    if (!retryable) throw new ScopeException("REFUND_REQUEST_NOT_ACTIONABLE", 409);
-    // PayPal documents no guaranteed minimum retention for a refund's PayPal-Request-Id: the
-    // general REST guide illustrates the refund call with "up to 45 days" (a maximum), and the
-    // Orders v2 reference states keys are stored for 6 hours. We treat 6 hours - the smallest
-    // observed statement - as the safe replay bound. Beyond it a retry may be a NEW attempt
-    // against an unresolved one: block and leave the row UNCLEAR for human resolution. There is
-    // no automatic retry anywhere; every approve is a human action.
-    if (RefundRequest.UNCLEAR.equals(row.getState()) && row.getApprovedAt() != null
-        && row.getApprovedAt().plus(6, java.time.temporal.ChronoUnit.HOURS).isBefore(OffsetDateTime.now())) {
+    // Only a DRAFT row may send an attempt. DRAFT means "no attempt was ever recorded": the
+    // first-attempt marker is committed BEFORE the remote call, so a network-ambiguous failure
+    // lands in UNCLEAR, never back in DRAFT. An UNCLEAR row without a PayPal refund id has an
+    // unknown outcome; PayPal documents no guaranteed retention for replaying its
+    // PayPal-Request-Id, so NO retry is permitted at any age - a second POST could double-refund.
+    // The amount stays reserved; the human resolves the original attempt at PayPal.
+    if (RefundRequest.UNCLEAR.equals(row.getState()) && row.getPaypalRefundId() == null) {
       outbox.record("order", row.getOrderRequestId(), "REFUND_RETRY_BLOCKED",
-          Map.of("refundRequestId", row.getRefundRequestId(), "reason", "REFUND_RETRY_WINDOW_EXPIRED"));
-      throw new ScopeException("REFUND_RETRY_WINDOW_EXPIRED", 409);
+          Map.of("refundRequestId", row.getRefundRequestId(), "reason", "REFUND_OUTCOME_UNKNOWN"));
+      throw new ScopeException("REFUND_OUTCOME_UNKNOWN", 409);
     }
+    if (!RefundRequest.DRAFT.equals(row.getState()))
+      throw new ScopeException("REFUND_REQUEST_NOT_ACTIONABLE", 409);
     // Lock the parent order row: concurrent approvals of DIFFERENT requests on the same
     // capture, and the legacy full-refund path, all serialize on this row, so the cap
     // re-check below can never be passed by two approvals at once.
@@ -159,18 +157,27 @@ public class RefundRequestController {
     BigDecimal remaining = new BigDecimal(AppConfig.PRICE_VALUE).subtract(committed);
     if (row.getAmount().compareTo(remaining) > 0) throw new ScopeException("REFUND_EXCEEDS_REMAINING", 409);
 
+    // Record the first attempt (time, amount, currency, idempotency key are immutable after
+    // this point) BEFORE the remote call, and commit the marker even when the call fails: a
+    // network-ambiguous attempt becomes UNCLEAR, never a retryable DRAFT.
+    row.setApprovedAt(OffsetDateTime.now());
+    refundRequests.saveAndFlush(row);
     JsonNode data;
     try {
       data = paypal.refundCapture(row.getCaptureId(), row.getAmount().setScale(2).toPlainString(),
           row.getCurrency(), row.getRefundRequestId());
     } catch (Exception e) {
-      // The attempt may or may not have reached PayPal. Retrying approve replays the SAME
-      // PayPal-Request-Id within the conservative 6-hour bound enforced above; PayPal's only
-      // stronger statement ("up to 45 days") is a documented maximum, not a guarantee.
-      throw e;
+      // The attempt may or may not have reached PayPal. The outcome is unknown: mark UNCLEAR
+      // (amount stays reserved) and leave resolution to a human in the PayPal dashboard.
+      row.setState(RefundRequest.UNCLEAR);
+      refundRequests.save(row);
+      outbox.record("order", row.getOrderRequestId(), "REFUND_REQUEST_UNCLEAR",
+          Map.of("refundRequestId", row.getRefundRequestId(), "refundId", "",
+              "reason", "ATTEMPT_OUTCOME_UNKNOWN"));
+      Map<String, Object> out = new LinkedHashMap<>(view(row));
+      out.put("error", "REFUND_OUTCOME_UNKNOWN");
+      return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(out);
     }
-    // First-attempt time anchors the conservative idempotency bound; a retry must not extend it.
-    if (row.getApprovedAt() == null) row.setApprovedAt(OffsetDateTime.now());
     String refundId = data.path("id").asText("");
     // Fail closed unless PayPal's own response confirms the exact amount and currency we sent.
     JsonNode remoteAmount = data.path("amount");
