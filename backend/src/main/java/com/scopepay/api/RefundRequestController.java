@@ -55,11 +55,15 @@ public class RefundRequestController {
     this.comparator = comparator; this.paypal = paypal; this.ledger = ledger; this.outbox = outbox;
   }
 
-  private BigDecimal committed(String orderRequestId) {
+  private BigDecimal committed(String orderRequestId, String excludeRequestId) {
     BigDecimal sum = BigDecimal.ZERO;
     for (RefundRequest r : refundRequests.findByOrderRequestId(orderRequestId)) {
+      if (r.getRefundRequestId().equals(excludeRequestId)) continue;
+      // COMPLETED moved money. ANY UNCLEAR row may have moved money (a network-ambiguous
+      // attempt can reach PayPal without our seeing the refund id), so every UNCLEAR row
+      // reserves its amount against the cap until PayPal's own record resolves it.
       boolean counts = RefundRequest.COMPLETED.equals(r.getState())
-          || (RefundRequest.UNCLEAR.equals(r.getState()) && r.getPaypalRefundId() != null);
+          || RefundRequest.UNCLEAR.equals(r.getState());
       if (counts) sum = sum.add(r.getAmount());
     }
     return sum;
@@ -90,7 +94,7 @@ public class RefundRequestController {
       throw new ScopeException("SCOPE_REQUIRED", 409);
     ScopeDraft draft = drafts.findById(order.getScopeId())
         .orElseThrow(() -> new ScopeException("SCOPE_REQUIRED", 409));
-    BigDecimal remaining = new BigDecimal(AppConfig.PRICE_VALUE).subtract(committed(order.getRequestId()));
+    BigDecimal remaining = new BigDecimal(AppConfig.PRICE_VALUE).subtract(committed(order.getRequestId(), null));
     if (amount.compareTo(remaining) > 0) throw new ScopeException("REFUND_EXCEEDS_REMAINING", 409);
 
     String deliveryText = body.get("deliveryText").asText();
@@ -132,6 +136,15 @@ public class RefundRequestController {
     boolean retryable = RefundRequest.DRAFT.equals(row.getState())
         || (RefundRequest.UNCLEAR.equals(row.getState()) && row.getPaypalRefundId() == null);
     if (!retryable) throw new ScopeException("REFUND_REQUEST_NOT_ACTIONABLE", 409);
+    // PayPal documents a 45-day replay window for a refund's PayPal-Request-Id
+    // (developer.paypal.com/api/rest/requests). Beyond it a retry is a NEW attempt, which an
+    // unresolved earlier attempt makes unsafe: block and leave the row UNCLEAR for a human.
+    if (RefundRequest.UNCLEAR.equals(row.getState()) && row.getApprovedAt() != null
+        && row.getApprovedAt().plus(45, java.time.temporal.ChronoUnit.DAYS).isBefore(OffsetDateTime.now())) {
+      outbox.record("order", row.getOrderRequestId(), "REFUND_RETRY_BLOCKED",
+          Map.of("refundRequestId", row.getRefundRequestId(), "reason", "REFUND_RETRY_WINDOW_EXPIRED"));
+      throw new ScopeException("REFUND_RETRY_WINDOW_EXPIRED", 409);
+    }
     // Lock the parent order row: concurrent approvals of DIFFERENT requests on the same
     // capture, and the legacy full-refund path, all serialize on this row, so the cap
     // re-check below can never be passed by two approvals at once.
@@ -139,7 +152,7 @@ public class RefundRequestController {
         .orElseThrow(() -> new ScopeException("ORDER_NOT_FOUND", 404));
     if (!"COMPLETED".equals(order.getState())) throw new ScopeException("ORDER_NOT_COMPLETED", 409);
     // The cap is enforced again at approve time: other requests may have committed since create.
-    BigDecimal committed = committed(row.getOrderRequestId());
+    BigDecimal committed = committed(row.getOrderRequestId(), row.getRefundRequestId());
     BigDecimal remaining = new BigDecimal(AppConfig.PRICE_VALUE).subtract(committed);
     if (row.getAmount().compareTo(remaining) > 0) throw new ScopeException("REFUND_EXCEEDS_REMAINING", 409);
 
@@ -149,10 +162,12 @@ public class RefundRequestController {
           row.getCurrency(), row.getRefundRequestId());
     } catch (Exception e) {
       // The attempt may or may not have reached PayPal. Retrying approve replays the SAME
-      // PayPal-Request-Id, which PayPal answers with the original refund instead of a second one.
+      // PayPal-Request-Id, which PayPal answers with the original refund instead of a second
+      // one, within its documented 45-day idempotency window (enforced above).
       throw e;
     }
-    row.setApprovedAt(OffsetDateTime.now());
+    // First-attempt time anchors the 45-day idempotency window; a retry must not extend it.
+    if (row.getApprovedAt() == null) row.setApprovedAt(OffsetDateTime.now());
     String refundId = data.path("id").asText("");
     // Fail closed unless PayPal's own response confirms the exact amount and currency we sent.
     JsonNode remoteAmount = data.path("amount");

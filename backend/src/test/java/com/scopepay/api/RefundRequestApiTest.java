@@ -199,6 +199,84 @@ class RefundRequestApiTest {
   }
 
   @Test
+  void unclearWithoutRefundIdStillReservesAgainstTheCap() throws Exception {
+    createScopeAndCapture();
+    // Network-ambiguous attempt: PayPal answered PENDING without a refund id. Money may have
+    // moved, so the row must reserve its amount against the cap even with no id.
+    paypal.partialRefundBehavior = () -> TestStubs.MAPPER.createObjectNode().put("status", "PENDING");
+    String id = createRequest();
+    mvc.perform(post("/api/refund-requests/" + id + "/approve", "{\"acknowledge\":true}"))
+        .andExpect(status().isConflict());
+    assertEquals("UNCLEAR", refundRequests.findById(id).orElseThrow().getState());
+    assertNull(refundRequests.findById(id).orElseThrow().getPaypalRefundId());
+    mvc.perform(post("/api/orders/ORDER12345/refund-requests",
+        "{\"amount\":\"6.51\",\"reason\":\"r\",\"deliveryText\":\"" + DELIVERY + "\"}"))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.error").value("REFUND_EXCEEDS_REMAINING"));
+    mvc.perform(post("/api/orders/ORDER12345/refund-requests",
+        "{\"amount\":\"6.50\",\"reason\":\"r\",\"deliveryText\":\"" + DELIVERY + "\"}"))
+        .andExpect(status().isCreated());
+    // Retrying the UNCLEAR row itself stays allowed: it never counts against its own retry.
+    paypal.partialRefundBehavior = null;
+    mvc.perform(post("/api/refund-requests/" + id + "/approve", "{\"acknowledge\":true}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.state").value("COMPLETED"));
+  }
+
+  @Test
+  void retryAfterPayPalIdempotencyWindowIsBlocked() throws Exception {
+    createScopeAndCapture();
+    paypal.partialRefundBehavior = () -> TestStubs.MAPPER.createObjectNode().put("status", "PENDING");
+    String id = createRequest();
+    mvc.perform(post("/api/refund-requests/" + id + "/approve", "{\"acknowledge\":true}"))
+        .andExpect(status().isConflict());
+    // PayPal documents a 45-day replay window for a refund PayPal-Request-Id. Beyond it the
+    // retry would be a brand-new attempt against an unresolved one: block, stay UNCLEAR.
+    com.scopepay.store.RefundRequest row = refundRequests.findById(id).orElseThrow();
+    row.setApprovedAt(java.time.OffsetDateTime.now().minus(46, java.time.temporal.ChronoUnit.DAYS));
+    refundRequests.save(row);
+    int attemptsBefore = paypal.refunds.get();
+    mvc.perform(post("/api/refund-requests/" + id + "/approve", "{\"acknowledge\":true}"))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.error").value("REFUND_RETRY_WINDOW_EXPIRED"));
+    assertEquals("UNCLEAR", refundRequests.findById(id).orElseThrow().getState());
+    assertEquals(attemptsBefore, paypal.refunds.get(), "no new attempt after the idempotency window");
+  }
+
+  @Test
+  void concurrentApprovalsOfDifferentRequestsSerializeOnTheOrderLock() throws Exception {
+    createScopeAndCapture();
+    String body = "{\"amount\":\"6.00\",\"reason\":\"r\",\"deliveryText\":\"" + DELIVERY + "\"}";
+    String first = mvc.perform(post("/api/orders/ORDER12345/refund-requests", body))
+        .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString()
+        .replaceAll(".*\\\"refundRequestId\\\":\\\"([^\\\"]+)\\\".*", "$1");
+    String second = mvc.perform(post("/api/orders/ORDER12345/refund-requests", body))
+        .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString()
+        .replaceAll(".*\\\"refundRequestId\\\":\\\"([^\\\"]+)\\\".*", "$1");
+    java.util.concurrent.CountDownLatch gate = new java.util.concurrent.CountDownLatch(1);
+    java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+    java.util.concurrent.Callable<Integer> approveA = () -> { gate.await();
+        return mvc.perform(post("/api/refund-requests/" + first + "/approve", "{\"acknowledge\":true}"))
+            .andReturn().getResponse().getStatus(); };
+    java.util.concurrent.Callable<Integer> approveB = () -> { gate.await();
+        return mvc.perform(post("/api/refund-requests/" + second + "/approve", "{\"acknowledge\":true}"))
+            .andReturn().getResponse().getStatus(); };
+    java.util.concurrent.Future<Integer> fa = pool.submit(approveA);
+    java.util.concurrent.Future<Integer> fb = pool.submit(approveB);
+    gate.countDown();
+    int sa = fa.get(30, java.util.concurrent.TimeUnit.SECONDS);
+    int sb = fb.get(30, java.util.concurrent.TimeUnit.SECONDS);
+    pool.shutdown();
+    // Exactly one approval may pass the cap: 6.00 + 6.00 exceeds the 10.00 capture.
+    assertEquals(java.util.Set.of(200, 409), java.util.Set.of(sa, sb));
+    assertEquals(1, paypal.refunds.get(), "exactly one refund reached PayPal");
+    long completed = refundRequests.findByOrderRequestId(
+        refundRequests.findById(first).orElseThrow().getOrderRequestId()).stream()
+        .filter(r -> "COMPLETED".equals(r.getState())).count();
+    assertEquals(1, completed);
+  }
+
+  @Test
   void legacyFullRefundBlockedOnceMakeGoodExists() throws Exception {
     createScopeAndCapture();
     String id = createRequest();
