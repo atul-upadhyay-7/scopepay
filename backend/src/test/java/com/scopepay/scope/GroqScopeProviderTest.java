@@ -45,14 +45,17 @@ class GroqScopeProviderTest {
   }
 
   @Test
-  void usesFixedModelStrictSchemaSeparateBriefAndNoTools() throws Exception {
+  void usesFixedModelJsonObjectSeparateBriefAndNoTools() throws Exception {
     responseBody = okResponse();
     GroqScopeProvider p = startProvider(50);
     GenerateResult result = p.generate("Policy", "Synthetic brief", "{\"type\":\"object\"}");
     assertEquals("draft", result.data().get("summary").asText());
     JsonNode body = MAPPER.readTree(requestBodies.get(0));
     assertEquals("openai/gpt-oss-20b", body.get("model").asText());
-    assertTrue(body.get("response_format").get("json_schema").get("strict").asBoolean());
+    // json_object mode: strict json_schema forbids the map-shaped deliverables object;
+    // the schema rides in the system prompt and local validators enforce it fail-closed.
+    assertEquals("json_object", body.get("response_format").get("type").asText());
+    assertTrue(body.get("messages").get(0).get("content").asText().contains("{\"type\":\"object\"}"));
     assertEquals("Synthetic brief", body.get("messages").get(1).get("content").asText());
     assertFalse(body.has("tools"));
     assertTrue(body.get("messages").get(0).get("content").asText().contains("Policy"));

@@ -45,12 +45,11 @@ public class GroqScopeProvider implements ScopeProvider {
     messages.addObject().put("role", "system").put("content",
         instructions + "\nRequired JSON schema (all keys must be present, including conflicts: [] when none): " + schemaJson);
     messages.addObject().put("role", "user").put("content", brief);
+    // json_object mode: Groq's strict json_schema requires additionalProperties:false on every
+    // object, which forbids the map-shaped deliverables object. The schema still goes in the
+    // system prompt; the fail-closed local validators enforce the contract on every response.
     ObjectNode responseFormat = body.putObject("response_format");
-    responseFormat.put("type", "json_schema");
-    ObjectNode jsonSchema = responseFormat.putObject("json_schema");
-    jsonSchema.put("name", "scope_draft");
-    jsonSchema.put("strict", true);
-    jsonSchema.set("schema", MAPPER.readTree(schemaJson));
+    responseFormat.put("type", "json_object");
 
     HttpRequest request = HttpRequest.newBuilder(URI.create(endpoint))
         .timeout(Duration.ofSeconds(20))
