@@ -45,14 +45,16 @@ public class RefundRequestController {
   private final RefundRequestRepository refundRequests;
   private final DeliveryComparator comparator;
   private final PayPalClient paypal;
+  private final com.scopepay.store.AttemptMarker attemptMarker;
   private final LedgerService ledger;
   private final OutboxService outbox;
 
   public RefundRequestController(SandboxOrderRepository orders, ScopeDraftRepository drafts,
       RefundRequestRepository refundRequests, DeliveryComparator comparator, PayPalClient paypal,
-      LedgerService ledger, OutboxService outbox) {
+      LedgerService ledger, OutboxService outbox, com.scopepay.store.AttemptMarker attemptMarker) {
     this.orders = orders; this.drafts = drafts; this.refundRequests = refundRequests;
     this.comparator = comparator; this.paypal = paypal; this.ledger = ledger; this.outbox = outbox;
+    this.attemptMarker = attemptMarker;
   }
 
   private BigDecimal committed(String orderRequestId, String excludeRequestId) {
@@ -127,9 +129,15 @@ public class RefundRequestController {
         || !body.has("acknowledge") || !body.get("acknowledge").asBoolean(false))
       throw new ScopeException("REVIEW_ACKNOWLEDGMENT_REQUIRED", 400);
     String owner = SessionGate.ownerHash(request);
-    RefundRequest row = refundRequests.findWithLockByRefundRequestId(id)
+    RefundRequest probe = refundRequests.findById(id)
         .filter(r -> owner.equals(r.getOwnerHash()))
         .orElseThrow(() -> new ScopeException("REFUND_REQUEST_NOT_FOUND", 404));
+    // Lock the parent order row FIRST: every approve on this capture (and the legacy full
+    // refund) serializes here, so the cap re-check below can never be passed twice at once.
+    SandboxOrder order = orders.findWithLockByRequestId(probe.getOrderRequestId())
+        .orElseThrow(() -> new ScopeException("ORDER_NOT_FOUND", 404));
+    // Re-read under the order lock: the state may have moved between the probe and the lock.
+    RefundRequest row = refundRequests.findById(id).orElseThrow();
     if (RefundRequest.COMPLETED.equals(row.getState())) return ResponseEntity.ok(view(row));
     // DRAFT rows, and UNCLEAR rows with no PayPal refund id (nothing reached PayPal as far as we
     // can prove), may (re-)send: the same PayPal-Request-Id replays one attempt, never two.
@@ -146,31 +154,29 @@ public class RefundRequestController {
     }
     if (!RefundRequest.DRAFT.equals(row.getState()))
       throw new ScopeException("REFUND_REQUEST_NOT_ACTIONABLE", 409);
-    // Lock the parent order row: concurrent approvals of DIFFERENT requests on the same
-    // capture, and the legacy full-refund path, all serialize on this row, so the cap
-    // re-check below can never be passed by two approvals at once.
-    SandboxOrder order = orders.findWithLockByRequestId(row.getOrderRequestId())
-        .orElseThrow(() -> new ScopeException("ORDER_NOT_FOUND", 404));
     if (!"COMPLETED".equals(order.getState())) throw new ScopeException("ORDER_NOT_COMPLETED", 409);
     // The cap is enforced again at approve time: other requests may have committed since create.
     BigDecimal committed = committed(row.getOrderRequestId(), row.getRefundRequestId());
     BigDecimal remaining = new BigDecimal(AppConfig.PRICE_VALUE).subtract(committed);
     if (row.getAmount().compareTo(remaining) > 0) throw new ScopeException("REFUND_EXCEEDS_REMAINING", 409);
 
-    // Record the first attempt (time, amount, currency, idempotency key are immutable after
-    // this point) BEFORE the remote call, and commit the marker even when the call fails: a
-    // network-ambiguous attempt becomes UNCLEAR, never a retryable DRAFT.
-    row.setApprovedAt(OffsetDateTime.now());
-    refundRequests.saveAndFlush(row);
+    // Commit the first-attempt marker in its OWN transaction BEFORE the remote call. From
+    // this instant the amount is reserved and any second approve is blocked, and a crash after
+    // this point can never leave a retryable DRAFT: the attempt stays UNCLEAR and reserved
+    // until a human resolves it at PayPal. (A bare flush is not a commit - that was the hole.)
+    OffsetDateTime attemptAt = OffsetDateTime.now();
+    if (!attemptMarker.markStarted(row.getRefundRequestId(), attemptAt))
+      throw new ScopeException("REFUND_REQUEST_NOT_ACTIONABLE", 409);
+    // Keep the in-memory entity in lockstep so the post-call save cannot clobber the marker.
+    row.setApprovedAt(attemptAt);
+    row.setState(RefundRequest.UNCLEAR);
     JsonNode data;
     try {
       data = paypal.refundCapture(row.getCaptureId(), row.getAmount().setScale(2).toPlainString(),
           row.getCurrency(), row.getRefundRequestId());
     } catch (Exception e) {
-      // The attempt may or may not have reached PayPal. The outcome is unknown: mark UNCLEAR
-      // (amount stays reserved) and leave resolution to a human in the PayPal dashboard.
-      row.setState(RefundRequest.UNCLEAR);
-      refundRequests.save(row);
+      // The attempt may or may not have reached PayPal. The marker is already committed, so
+      // the outcome-unknown row stays UNCLEAR and reserved; only the outbox rides this tx.
       outbox.record("order", row.getOrderRequestId(), "REFUND_REQUEST_UNCLEAR",
           Map.of("refundRequestId", row.getRefundRequestId(), "refundId", "",
               "reason", "ATTEMPT_OUTCOME_UNKNOWN"));
