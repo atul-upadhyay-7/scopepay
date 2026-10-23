@@ -144,7 +144,7 @@ public class PayPalClient {
 
   /** Refunds a completed capture in full. Idempotent: PayPal-Request-Id ties retries to one refund. */
   public JsonNode refundCapture(String captureId) throws Exception {
-    return request("POST", "/v2/payments/captures/" + captureId + "/refunds", MAPPER.createObjectNode(),
+    return request("POST", "/v2/payments/captures/" + captureId + "/refund", MAPPER.createObjectNode(),
         "refund-" + captureId);
   }
 

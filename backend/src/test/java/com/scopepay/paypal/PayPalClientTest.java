@@ -67,6 +67,19 @@ class PayPalClientTest {
   }
 
   @Test
+  void refundUsesSingularCapturesRefundRoute() throws Exception {
+    start(false);
+    String base = "http://127.0.0.1:" + server.getAddress().getPort();
+    PayPalClient p = new PayPalClient("fake", "test-only", base, HttpClient.newHttpClient());
+    p.refundCapture("CAPTURE123");
+    // Official Payments v2 reference: POST /v2/payments/captures/{capture_id}/refund (singular).
+    // A plural "/refunds" route 404s against the real sandbox; assert the exact path so the
+    // stub-based API tests cannot mask a route regression again.
+    assertEquals("/v2/payments/captures/CAPTURE123/refund", urls.get(1));
+    assertEquals("refund-CAPTURE123", headers.get(1).get("paypal-request-id"));
+  }
+
+  @Test
   void productionBaseIsSandboxOnly() throws Exception {
     start(false);
     // The default constructor must hardcode the sandbox API base; no live mode exists.
