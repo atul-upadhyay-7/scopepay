@@ -8,7 +8,7 @@ Stack: **Spring Boot 3.3 (Java 21) + PostgreSQL** backend, **React + Vite + shad
 
 - Multi-page React interface (shadcn/ui): synthetic brief, draft summary, deliverables with exact source evidence, questions and conflicts, review, payment, receipts.
 - Server-side extraction validation with clear disabled, timeout, refusal and invalid-output errors. No canned output masquerading as AI.
-- Groq adapter for `openai/gpt-oss-20b`, strict JSON schema, separate system/brief messages, fixed endpoint, no tools or automatic retry, no paid fallback.
+- Groq adapter for `openai/gpt-oss-20b`, JSON-object mode with the schema in the system prompt and fail-closed local validation of every response, separate system/brief messages, fixed endpoint, no tools or automatic retry, no paid fallback.
 - Explicit review checkbox and server-saved review tied to the browser session in PostgreSQL.
 - Server-enforced reviewed-scope gate before creating the fixed USD 10.00 demo order.
 - PayPal sandbox SDK v6, Orders v2 create/capture, full-capture refunds, browser buyer approval, server-owned amount, session capability/origin checks, idempotency and stored completion receipt.
@@ -36,7 +36,7 @@ Freelancers lose money twice: unclear scopes that drift into disputes, and awkwa
 ## Built with, and how each tool is used
 
 - **PayPal JavaScript SDK v6 + Orders v2 REST API (sandbox)**: browser buyer approval, server-side order create/capture with idempotency identifiers, receipt verification of status, amount and currency before anything is marked complete, full refunds of completed captures through the Payments v2 refunds endpoint with their own idempotency keys, and webhook signature verification.
-- **Groq `openai/gpt-oss-20b`**: scope-draft extraction into a strict JSON schema, with verbatim evidence spans quoted from the brief. One fixed model and endpoint, no tool use, no automatic retries, no paid fallback; refusals and timeouts fail closed.
+- **Groq `openai/gpt-oss-20b`**: scope-draft extraction as JSON validated fail-closed against the contract server-side, with verbatim evidence spans quoted from the brief. One fixed model and endpoint, no tool use, no automatic retries, no paid fallback; refusals and timeouts fail closed.
 - **Spring Boot 3.3 (Java 21) + Spring Data JPA + Flyway**: loopback API, session capability checks, the review gate, order state machine, double-entry ledger and transactional outbox.
 - **Resilience4j**: retry with exponential backoff and a circuit breaker around the PayPal client.
 - **Spring Actuator + Micrometer + Prometheus**: health, metrics and a scrape endpoint with business counters.
