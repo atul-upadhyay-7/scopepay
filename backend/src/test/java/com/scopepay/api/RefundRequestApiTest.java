@@ -230,10 +230,11 @@ class RefundRequestApiTest {
     String id = createRequest();
     mvc.perform(post("/api/refund-requests/" + id + "/approve", "{\"acknowledge\":true}"))
         .andExpect(status().isConflict());
-    // PayPal documents a 45-day replay window for a refund PayPal-Request-Id. Beyond it the
-    // retry would be a brand-new attempt against an unresolved one: block, stay UNCLEAR.
+    // PayPal documents no guaranteed retention minimum for a refund PayPal-Request-Id ("up to
+    // 45 days" is a maximum; the Orders reference states 6 hours). We treat 6 hours as the
+    // safe replay bound: beyond it the retry may be a new attempt, so block, stay UNCLEAR.
     com.scopepay.store.RefundRequest row = refundRequests.findById(id).orElseThrow();
-    row.setApprovedAt(java.time.OffsetDateTime.now().minus(46, java.time.temporal.ChronoUnit.DAYS));
+    row.setApprovedAt(java.time.OffsetDateTime.now().minus(7, java.time.temporal.ChronoUnit.HOURS));
     refundRequests.save(row);
     int attemptsBefore = paypal.refunds.get();
     mvc.perform(post("/api/refund-requests/" + id + "/approve", "{\"acknowledge\":true}"))

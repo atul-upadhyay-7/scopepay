@@ -76,7 +76,7 @@ cd backend
 mvn test
 ```
 
-The full JUnit suite runs against an in-memory database with stubbed PayPal and AI: 121 tests, all must pass (one of them verifies the migrations against a real embedded PostgreSQL). This proves the safety code without touching the network.
+The full JUnit suite runs against an in-memory database with stubbed PayPal and AI: 123 tests, all must pass (one of them verifies the migrations against a real embedded PostgreSQL). This proves the safety code without touching the network.
 
 ## Step 7 - Start the backend
 

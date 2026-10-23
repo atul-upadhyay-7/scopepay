@@ -46,10 +46,12 @@ const browser = await chromium.launch();
   await drive(page, 'desktop');
   await page.getByRole('button', {name:'Approve this refund'}).click();
   await page.getByText('Make-good refund completed in the sandbox', {exact:false}).waitFor();
+  const legacyCount = await page.getByRole('button', {name:'Refund this payment'}).count();
+  console.log('legacy full-refund button visible with make-good present:', legacyCount, legacyCount === 0 ? 'HIDDEN-OK' : 'GUARD-FAIL');
   await page.screenshot({path:'/downloads/mg-desktop-completed.png'});
   await ctx.close();
 }
-{ // mobile: comparison view
+{ // mobile: comparison view, then approve -> completed (legacy button must be hidden)
   const ctx = await browser.newContext({viewport:{width:390,height:844}, deviceScaleFactor:2, isMobile:true, hasTouch:true});
   const page = await ctx.newPage();
   await setup(page);
@@ -57,6 +59,13 @@ const browser = await chromium.launch();
   await page.locator('[role="dialog"]').evaluate(el => { el.scrollTop = el.scrollHeight; });
   await page.waitForTimeout(300);
   await page.screenshot({path:'/downloads/mg-mobile-bottom.png'});
+  await page.getByRole('button', {name:'Approve this refund'}).click();
+  await page.getByText('Make-good refund completed in the sandbox', {exact:false}).waitFor();
+  const legacyMobile = await page.getByRole('button', {name:'Refund this payment'}).count();
+  console.log('mobile legacy full-refund button with make-good present:', legacyMobile, legacyMobile === 0 ? 'HIDDEN-OK' : 'GUARD-FAIL');
+  await page.locator('[role="dialog"]').evaluate(el => { el.scrollTop = 0; });
+  await page.waitForTimeout(300);
+  await page.screenshot({path:'/downloads/mg-mobile-completed.png'});
   await ctx.close();
 }
 await browser.close();

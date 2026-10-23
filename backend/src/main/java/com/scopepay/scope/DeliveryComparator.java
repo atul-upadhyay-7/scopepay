@@ -64,6 +64,7 @@ public class DeliveryComparator {
     JsonNode comparisons = raw.get("comparisons");
     if (!comparisons.isArray() || comparisons.isEmpty() || comparisons.size() > 12)
       throw new ScopeException("INVALID_MODEL_OUTPUT");
+    boolean accountHostile = OVERRIDE_PATTERN.matcher(deliveryText).find();
     Set<String> expected = new HashSet<>();
     for (JsonNode d : scopeDeliverables) expected.add(d.path("description").asText());
     Set<String> seen = new HashSet<>();
@@ -85,13 +86,23 @@ public class DeliveryComparator {
       } else if (quote.isEmpty() || !deliveryText.contains(quote)) {
         throw new ScopeException("UNGROUNDED_COMPARISON");
       }
-      // A CLAIMED verdict must rest on deliverable-specific support: the quoted span must share
-      // at least one content token with the deliverable it claims. A blanket claim ("everything
-      // is complete") cannot justify every deliverable at once; downgrade rather than reject so
-      // the human still sees the quote and decides. (Manipulation resistance, fail-open to review.)
-      if (("CLAIMED_ADDRESSED".equals(verdict) || "CLAIMED_PARTIAL".equals(verdict))
+      // Manipulation resistance, fail-open to review (downgrade, never reject, so the human
+      // still sees the verbatim quote and decides):
+      // (a) An account containing instruction-override language is untrusted as a whole: every
+      //     CLAIMED verdict from it is downgraded, even a well-formed specific one, because the
+      //     text was authored to steer the model rather than to report delivery.
+      // (b) Otherwise a CLAIMED verdict must still rest on deliverable-specific support: the
+      //     quote must share at least one content token with the deliverable it claims, so a
+      //     blanket claim ("everything is complete") cannot justify every deliverable at once.
+      ObjectNode entry = (ObjectNode) c;
+      if (accountHostile
+          && ("CLAIMED_ADDRESSED".equals(verdict) || "CLAIMED_PARTIAL".equals(verdict))) {
+        entry.put("verdict", "UNCLEAR");
+        String note = "Delivery account contains instruction-override language; claim untrusted. "
+            + entry.get("note").asText();
+        entry.put("note", note.length() > 500 ? note.substring(0, 497) + "..." : note);
+      } else if (("CLAIMED_ADDRESSED".equals(verdict) || "CLAIMED_PARTIAL".equals(verdict))
           && !sharesSupportToken(deliverable, quote)) {
-        ObjectNode entry = (ObjectNode) c;
         entry.put("verdict", "UNCLEAR");
         String note = "Claim lacked deliverable-specific support; downgraded. " + entry.get("note").asText();
         entry.put("note", note.length() > 500 ? note.substring(0, 497) + "..." : note);
@@ -100,6 +111,15 @@ public class DeliveryComparator {
     if (!seen.equals(expected)) throw new ScopeException("UNGROUNDED_COMPARISON");
     return (ObjectNode) raw;
   }
+
+  /** Instruction-override phrasing in a self-reported account. Conservative: patterns only
+      match explicit override wording, never ordinary delivery prose. */
+  private static final java.util.regex.Pattern OVERRIDE_PATTERN = java.util.regex.Pattern.compile(
+      "(?i)(ignore\\s+(all|any|previous|prior|your|the above)\\s+instructions"
+      + "|disregard\\s+(all|any|previous|prior)\\s+(instructions|directions)"
+      + "|system\\s+override|developer\\s+mode|jailbreak"
+      + "|mark\\s+(every|all)\\s+deliverable"
+      + "|new\\s+instructions\\s*:|you\\s+are\\s+now\\s)");
 
   private static final Set<String> SUPPORT_STOPWORDS = Set.of(
       "done", "complete", "completed", "everything", "every", "this", "that", "with", "have",

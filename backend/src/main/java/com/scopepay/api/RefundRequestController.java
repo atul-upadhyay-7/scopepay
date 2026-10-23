@@ -136,11 +136,14 @@ public class RefundRequestController {
     boolean retryable = RefundRequest.DRAFT.equals(row.getState())
         || (RefundRequest.UNCLEAR.equals(row.getState()) && row.getPaypalRefundId() == null);
     if (!retryable) throw new ScopeException("REFUND_REQUEST_NOT_ACTIONABLE", 409);
-    // PayPal documents a 45-day replay window for a refund's PayPal-Request-Id
-    // (developer.paypal.com/api/rest/requests). Beyond it a retry is a NEW attempt, which an
-    // unresolved earlier attempt makes unsafe: block and leave the row UNCLEAR for a human.
+    // PayPal documents no guaranteed minimum retention for a refund's PayPal-Request-Id: the
+    // general REST guide illustrates the refund call with "up to 45 days" (a maximum), and the
+    // Orders v2 reference states keys are stored for 6 hours. We treat 6 hours - the smallest
+    // observed statement - as the safe replay bound. Beyond it a retry may be a NEW attempt
+    // against an unresolved one: block and leave the row UNCLEAR for human resolution. There is
+    // no automatic retry anywhere; every approve is a human action.
     if (RefundRequest.UNCLEAR.equals(row.getState()) && row.getApprovedAt() != null
-        && row.getApprovedAt().plus(45, java.time.temporal.ChronoUnit.DAYS).isBefore(OffsetDateTime.now())) {
+        && row.getApprovedAt().plus(6, java.time.temporal.ChronoUnit.HOURS).isBefore(OffsetDateTime.now())) {
       outbox.record("order", row.getOrderRequestId(), "REFUND_RETRY_BLOCKED",
           Map.of("refundRequestId", row.getRefundRequestId(), "reason", "REFUND_RETRY_WINDOW_EXPIRED"));
       throw new ScopeException("REFUND_RETRY_WINDOW_EXPIRED", 409);
@@ -162,11 +165,11 @@ public class RefundRequestController {
           row.getCurrency(), row.getRefundRequestId());
     } catch (Exception e) {
       // The attempt may or may not have reached PayPal. Retrying approve replays the SAME
-      // PayPal-Request-Id, which PayPal answers with the original refund instead of a second
-      // one, within its documented 45-day idempotency window (enforced above).
+      // PayPal-Request-Id within the conservative 6-hour bound enforced above; PayPal's only
+      // stronger statement ("up to 45 days") is a documented maximum, not a guarantee.
       throw e;
     }
-    // First-attempt time anchors the 45-day idempotency window; a retry must not extend it.
+    // First-attempt time anchors the conservative idempotency bound; a retry must not extend it.
     if (row.getApprovedAt() == null) row.setApprovedAt(OffsetDateTime.now());
     String refundId = data.path("id").asText("");
     // Fail closed unless PayPal's own response confirms the exact amount and currency we sent.
