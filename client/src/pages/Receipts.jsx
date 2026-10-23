@@ -82,7 +82,7 @@ export default function Receipts(){
    </TabsContent>
   </Tabs></Reveal>
   <Dialog open={!!selected} onOpenChange={open=>!open&&setSelected(null)}>
-   {selected&&<DialogContent>
+   {selected&&<DialogContent className="max-h-[85vh] overflow-y-auto">
     <DialogHeader>
      <DialogTitle>Scope {selected.scopeId.slice(0,8)}...</DialogTitle>
      <DialogDescription>Saved in this browser session only.</DialogDescription>
@@ -91,6 +91,24 @@ export default function Receipts(){
      <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">State</span><StateBadge state={selected.state}/></div>
      <div><span className="text-muted-foreground">Full scope id</span><p className="mt-1 break-all font-mono text-xs">{selected.scopeId}</p></div>
      <div><span className="text-muted-foreground">Summary</span><p className="mt-1 leading-relaxed text-secondary-foreground">{selected.summary}</p></div>
+     {selected.deliverables&&selected.deliverables.length>0&&<div>
+      <span className="text-muted-foreground">Deliverables, with source evidence</span>
+      <ul className="mt-2 space-y-3">{selected.deliverables.map((d,i)=><li key={i}>
+       <p className="font-medium leading-snug text-secondary-foreground">{d.description}</p>
+       <blockquote className="mb-0.5 mt-1 border-l-2 border-ember bg-background px-3 py-2 font-mono text-[12px] leading-relaxed text-secondary-foreground">"{d.evidence}"</blockquote>
+      </li>)}</ul>
+     </div>}
+     {selected.questions&&selected.questions.length>0&&<div>
+      <span className="text-muted-foreground">Open questions</span>
+      <ul className="mt-1.5 list-disc space-y-1 pl-5 text-secondary-foreground">{selected.questions.map((q,i)=><li key={i}>{q}</li>)}</ul>
+     </div>}
+     {selected.conflicts&&selected.conflicts.length>0&&<div>
+      <span className="text-muted-foreground">Conflicts</span>
+      <ul className="mt-1.5 space-y-2">{selected.conflicts.map((c,i)=><li key={i}>
+       <p className="font-medium leading-snug text-secondary-foreground">{c.description}</p>
+       {(c.evidence||[]).map((e,j)=><blockquote key={j} className="mb-0.5 mt-1 border-l-2 border-ember bg-background px-3 py-2 font-mono text-[12px] leading-relaxed text-secondary-foreground">"{e}"</blockquote>)}
+      </li>)}</ul>
+     </div>}
      <div className="flex justify-between gap-3"><span className="text-muted-foreground">Reviewed</span><span className="tabular-nums">{selected.reviewedAt?new Date(selected.reviewedAt).toLocaleString():'-'}</span></div>
     </div>
    </DialogContent>}
