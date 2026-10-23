@@ -13,7 +13,7 @@ function Row({label,children}){
  </div>;
 }
 export default function Payment(){
- const {config,review,ready,message,paid,checkout,setFailureMode}=useScopePay();
+ const {config,review,ready,setupIssue,checkoutClosed,message,paid,checkout,setFailureMode}=useScopePay();
  const [failureMode,setMode]=useState('off');
  const [modeBusy,setModeBusy]=useState(false);
  const MODES=[['off','Off'],['capture-pending','Capture stays unclear'],['capture-wrong-amount','Capture returns wrong amount'],['create-down','Order create fails']];
@@ -43,7 +43,7 @@ export default function Payment(){
        <span className="success-ring mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ember text-primary-foreground"><CheckCircle2 size={13} strokeWidth={3}/></span>
        <p className="font-semibold text-ember-deep">Sandbox payment completed. Capture <span className="font-mono text-[13px]">{paid.captureId}</span>. See it on the Receipts page.</p>
       </div>
-      :<Button disabled={!ready} onClick={checkout}>{ready?'Pay with PayPal (sandbox)':'Preparing sandbox checkout...'}</Button>}
+      :<Button disabled={!ready} onClick={checkout}>{setupIssue?'Sandbox setup needed':checkoutClosed?'Checkout closed - reload to start again':ready?'Pay with PayPal (sandbox)':'Preparing sandbox checkout...'}</Button>}
      {message&&<p className="mt-4 text-[13px] text-muted-foreground [overflow-wrap:anywhere]">{message}</p>}
     </div>
    </CardContent>
