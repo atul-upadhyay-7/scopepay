@@ -46,4 +46,10 @@ public class AppConfig {
       org.springframework.beans.factory.ObjectProvider<ScopeProvider> provider) {
     return new com.scopepay.scope.ScopeExtractor(Optional.ofNullable(provider.getIfAvailable()));
   }
+
+  @Bean
+  public com.scopepay.scope.DeliveryComparator deliveryComparator(
+      org.springframework.beans.factory.ObjectProvider<ScopeProvider> provider) {
+    return new com.scopepay.scope.DeliveryComparator(Optional.ofNullable(provider.getIfAvailable()));
+  }
 }

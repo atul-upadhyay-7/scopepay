@@ -9,6 +9,7 @@ import com.scopepay.store.LedgerEntry;
 import com.scopepay.store.LedgerEntryRepository;
 import com.scopepay.store.OutboxEvent;
 import com.scopepay.store.OutboxEventRepository;
+import com.scopepay.store.RefundRequestRepository;
 import com.scopepay.store.ScopeDraftRepository;
 import java.util.Optional;
 import jakarta.servlet.http.HttpServletRequest;
@@ -24,13 +25,15 @@ public class ConfigController {
   private final Optional<ScopeProvider> scopeProvider;
   private final ScopeDraftRepository drafts;
   private final SandboxOrderRepository orders;
+  private final RefundRequestRepository refundRequests;
   private final OutboxEventRepository outboxEvents;
   private final LedgerEntryRepository ledgerEntries;
 
   public ConfigController(AppConfig config, Optional<ScopeProvider> scopeProvider, ScopeDraftRepository drafts,
-      SandboxOrderRepository orders, OutboxEventRepository outboxEvents, LedgerEntryRepository ledgerEntries) {
+      SandboxOrderRepository orders, RefundRequestRepository refundRequests, OutboxEventRepository outboxEvents, LedgerEntryRepository ledgerEntries) {
     this.config = config; this.scopeProvider = scopeProvider; this.drafts = drafts; this.orders = orders;
     this.outboxEvents = outboxEvents; this.ledgerEntries = ledgerEntries;
+    this.refundRequests = refundRequests;
   }
 
   @GetMapping("/api/health")
@@ -103,6 +106,21 @@ public class ConfigController {
               }).toList());
           return m;
         }).toList();
-    return Map.of("drafts", draftList, "orders", orderList);
+    List<Map<String, Object>> refundList = refundRequests.findTop20ByOwnerHashOrderByCreatedAtDesc(owner).stream()
+        .map(r -> {
+          Map<String, Object> m = new LinkedHashMap<String, Object>();
+          m.put("refundRequestId", r.getRefundRequestId());
+          m.put("orderRequestId", r.getOrderRequestId());
+          m.put("state", r.getState());
+          m.put("amount", r.getAmount().toPlainString());
+          m.put("currency", r.getCurrency());
+          m.put("reason", r.getReason());
+          m.put("comparison", r.getComparison());
+          m.put("paypalRefundId", r.getPaypalRefundId());
+          m.put("createdAt", r.getCreatedAt());
+          m.put("completedAt", r.getCompletedAt());
+          return m;
+        }).toList();
+    return Map.of("drafts", draftList, "orders", orderList, "refundRequests", refundList);
   }
 }

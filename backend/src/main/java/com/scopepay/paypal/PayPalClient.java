@@ -148,6 +148,22 @@ public class PayPalClient {
         "refund-" + captureId);
   }
 
+  /**
+   * Refunds an explicit partial amount of a completed capture. The amount is always sent:
+   * never blank, so PayPal never auto-calculates a remainder. Each refund attempt carries its
+   * own PayPal-Request-Id, so a retry replays that one attempt instead of creating a second refund.
+   */
+  public JsonNode refundCapture(String captureId, String value, String currency, String idempotencyKey) throws Exception {
+    ObjectNode body = MAPPER.createObjectNode();
+    body.putObject("amount").put("value", value).put("currency_code", currency);
+    return request("POST", "/v2/payments/captures/" + captureId + "/refund", body, idempotencyKey);
+  }
+
+  /** Reads a refund back from PayPal. Used by the reconciler for UNCLEAR refund requests. */
+  public JsonNode getRefund(String refundId) throws Exception {
+    return request("GET", "/v2/payments/refunds/" + refundId, null, null);
+  }
+
   /** Reads an order back from PayPal. Used by the reconciler; never trusts local state alone. */
   public JsonNode getOrder(String orderId) throws Exception {
     return request("GET", "/v2/checkout/orders/" + orderId, null, null);

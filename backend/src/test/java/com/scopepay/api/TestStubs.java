@@ -49,6 +49,9 @@ public class TestStubs {
     public void reset() {
       creates.set(0); captures.set(0); refunds.set(0);
       refundBehavior = TestStubs.StubPayPal::completedRefund;
+      partialRefundBehavior = StubPayPal::defaultPartialRefund;
+      getRefundBehavior = () -> MAPPER.createObjectNode().put("id", "REFUND-PARTIAL-1").put("status", "COMPLETED");
+      comparisonBehavior = TestStubs::defaultComparison;
       verifyStatus = "SUCCESS";
       createBehavior = () -> MAPPER.createObjectNode().put("id", "ORDER12345").put("status", "CREATED");
       captureBehavior = TestStubs.StubPayPal::completedCapture;
@@ -90,6 +93,32 @@ public class TestStubs {
       return refundBehavior.get();
     }
 
+    public volatile Supplier<JsonNode> partialRefundBehavior = StubPayPal::defaultPartialRefund;
+    public volatile Supplier<JsonNode> getRefundBehavior = () ->
+        MAPPER.createObjectNode().put("id", "REFUND-PARTIAL-1").put("status", "COMPLETED");
+    public volatile String lastPartialValue;
+    public volatile String lastPartialCurrency;
+    public volatile String lastPartialKey;
+
+    static JsonNode defaultPartialRefund() {
+      var root = MAPPER.createObjectNode();
+      root.put("id", "REFUND-PARTIAL-1").put("status", "COMPLETED");
+      root.putObject("amount").put("value", "3.50").put("currency_code", "USD");
+      return root;
+    }
+
+    @Override
+    public JsonNode refundCapture(String captureId, String value, String currency, String idempotencyKey) {
+      refunds.incrementAndGet();
+      lastPartialValue = value; lastPartialCurrency = currency; lastPartialKey = idempotencyKey;
+      return partialRefundBehavior.get();
+    }
+
+    @Override
+    public JsonNode getRefund(String refundId) {
+      return getRefundBehavior.get();
+    }
+
     public volatile String verifyStatus = "SUCCESS";
 
     @Override
@@ -106,9 +135,21 @@ public class TestStubs {
     return stub;
   }
 
+  public static volatile java.util.function.Function<String, JsonNode> comparisonBehavior = TestStubs::defaultComparison;
+
+  static JsonNode defaultComparison(String account) {
+    var root = MAPPER.createObjectNode();
+    var item = root.putArray("comparisons").addObject();
+    item.put("deliverable", "Contact form").put("verdict", "CLAIMED_PARTIAL")
+        .put("quote", "delivered the contact form").put("note", "stub note");
+    root.put("overallNote", "Stub comparison for tests.");
+    return root;
+  }
+
   @Bean
   public ScopeProvider stubScopeProvider() {
     return (instructions, brief, schema) -> {
+      if (schema.contains("comparisons")) return GenerateResult.ofData(comparisonBehavior.apply(brief));
       var d = MAPPER.createObjectNode();
       d.put("summary", "A contact website.");
       d.putArray("deliverables").addObject().put("description", "Contact form").put("evidence", "a contact form");

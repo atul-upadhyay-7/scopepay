@@ -30,12 +30,15 @@ public class ReconcilerService {
   private final OutboxService outbox;
   private final MeterRegistry metrics;
   private final TransactionTemplate tx;
+  private final RefundRequestRepository refundRequests;
 
   public ReconcilerService(PayPalClient paypal, SandboxOrderRepository orders, LedgerService ledger,
       OutboxService outbox, MeterRegistry metrics,
-      org.springframework.transaction.PlatformTransactionManager txManager) {
+      org.springframework.transaction.PlatformTransactionManager txManager,
+      RefundRequestRepository refundRequests) {
     this.paypal = paypal; this.orders = orders; this.ledger = ledger; this.outbox = outbox;
     this.metrics = metrics; this.tx = new TransactionTemplate(txManager);
+    this.refundRequests = refundRequests;
   }
 
   @Scheduled(fixedDelayString = "${scopepay.reconciler.interval-ms:60000}", initialDelayString = "15000")
@@ -57,6 +60,47 @@ public class ReconcilerService {
         log.warn("reconcile failed for {}: {}", order.getRequestId(), e.getMessage());
       }
     }
+    for (RefundRequest rr : refundRequests.findByState(RefundRequest.UNCLEAR)) {
+      try {
+        tx.executeWithoutResult(s -> {
+          try {
+            reconcileRefund(rr.getRefundRequestId());
+          } catch (RuntimeException e) {
+            throw e;
+          } catch (Exception e) {
+            throw new IllegalStateException(e);
+          }
+        });
+      } catch (Exception e) {
+        metrics.counter("scopepay.reconciler.errors").increment();
+        log.warn("refund reconcile failed for {}: {}", rr.getRefundRequestId(), e.getMessage());
+      }
+    }
+  }
+
+  private void reconcileRefund(String refundRequestId) throws Exception {
+    RefundRequest rr = refundRequests.findById(refundRequestId).orElse(null);
+    if (rr == null || !RefundRequest.UNCLEAR.equals(rr.getState()) || rr.getPaypalRefundId() == null) return;
+    JsonNode data = paypal.getRefund(rr.getPaypalRefundId());
+    String status = data.path("status").asText("");
+    if ("COMPLETED".equals(status)) {
+      rr.setState(RefundRequest.COMPLETED);
+      rr.setCompletedAt(OffsetDateTime.now());
+      refundRequests.save(rr);
+      String groupId = ledger.recordRefund(rr.getOrderRequestId(), rr.getPaypalRefundId(), rr.getAmount(), rr.getCurrency());
+      outbox.record("order", rr.getOrderRequestId(), "REFUND_REQUEST_COMPLETED",
+          Map.of("refundRequestId", rr.getRefundRequestId(), "refundId", rr.getPaypalRefundId(),
+              "amount", rr.getAmount().toPlainString(), "currency", rr.getCurrency(),
+              "ledgerGroupId", groupId, "recoveredBy", "reconciler"));
+      metrics.counter("scopepay.reconciler.recovered").increment();
+    } else if ("FAILED".equals(status) || "CANCELLED".equals(status)) {
+      rr.setState(RefundRequest.FAILED);
+      refundRequests.save(rr);
+      outbox.record("order", rr.getOrderRequestId(), "REFUND_REQUEST_FAILED",
+          Map.of("refundRequestId", rr.getRefundRequestId(), "refundId", rr.getPaypalRefundId(),
+              "paypalStatus", status));
+    }
+    // Any other answer (including PENDING) leaves the row UNCLEAR for a later run.
   }
 
   private void reconcileOne(String requestId) throws Exception {
