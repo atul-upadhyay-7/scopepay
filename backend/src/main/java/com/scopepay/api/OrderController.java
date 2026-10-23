@@ -7,6 +7,8 @@ import com.scopepay.scope.ScopeException;
 import com.scopepay.store.LedgerService;
 import com.scopepay.store.OrderStates;
 import com.scopepay.store.OutboxService;
+import com.scopepay.store.RefundRequest;
+import com.scopepay.store.RefundRequestRepository;
 import com.scopepay.store.SandboxOrder;
 import com.scopepay.store.SandboxOrderRepository;
 import com.scopepay.store.ScopeDraft;
@@ -40,13 +42,16 @@ public class OrderController {
   private final ScopeDraftRepository drafts;
   private final AppConfig config;
   private final LedgerService ledger;
+  private final RefundRequestRepository refundRequests;
   private final OutboxService outbox;
   private final MeterRegistry metrics;
 
   public OrderController(PayPalClient paypal, SandboxOrderRepository orders, ScopeDraftRepository drafts,
-      AppConfig config, LedgerService ledger, OutboxService outbox, MeterRegistry metrics) {
+      AppConfig config, LedgerService ledger, OutboxService outbox, MeterRegistry metrics,
+      RefundRequestRepository refundRequests) {
     this.paypal = paypal; this.orders = orders; this.drafts = drafts; this.config = config;
     this.ledger = ledger; this.outbox = outbox; this.metrics = metrics;
+    this.refundRequests = refundRequests;
   }
 
   private static void transition(SandboxOrder order, String to) {
@@ -152,7 +157,9 @@ public class OrderController {
   public ResponseEntity<Map<String, Object>> refund(@PathVariable String orderId, HttpServletRequest request) throws Exception {
     if (!ORDER_PATTERN.matcher(orderId).matches()) throw new ScopeException("INVALID_ORDER", 400);
     String owner = SessionGate.ownerHash(request);
-    SandboxOrder record = orders.findByOrderId(orderId)
+    // Locked for the whole check-then-refund: a make-good request created or approved
+    // concurrently must not slip past the USE_MAKE_GOOD_REFUND guard below.
+    SandboxOrder record = orders.findWithLockByOrderId(orderId)
         .filter(o -> owner.equals(o.getOwnerHash()))
         .orElseThrow(() -> new ScopeException("ORDER_NOT_FOUND", 404));
     if (OrderStates.REFUNDED.equals(record.getState())) {
@@ -166,6 +173,17 @@ public class OrderController {
       out.put("error", "ORDER_NOT_COMPLETED");
       out.put("status", record.getState());
       return ResponseEntity.status(HttpStatus.CONFLICT).body(out);
+    }
+    // A full refund with an empty body makes PayPal refund the REMAINING amount. After any
+    // make-good refund exists, that would silently refund less than "full" while our ledger
+    // posts a full reversal. Block the legacy path; the make-good flow owns the accounting.
+    for (RefundRequest r : refundRequests.findByOrderRequestId(record.getRequestId())) {
+      if (!RefundRequest.FAILED.equals(r.getState())) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("error", "USE_MAKE_GOOD_REFUND");
+        out.put("status", record.getState());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(out);
+      }
     }
     JsonNode data = paypal.refundCapture(record.getCaptureId());
     if (!"COMPLETED".equals(data.path("status").asText())) {

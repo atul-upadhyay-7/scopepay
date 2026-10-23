@@ -84,6 +84,17 @@ public class ReconcilerService {
     JsonNode data = paypal.getRefund(rr.getPaypalRefundId());
     String status = data.path("status").asText("");
     if ("COMPLETED".equals(status)) {
+      // Same fail-closed rule as the immediate approve path: PayPal's own record must
+      // confirm the exact amount and currency before the ledger posts anything.
+      JsonNode remoteAmount = data.path("amount");
+      boolean amountMatches = rr.getAmount().setScale(2).toPlainString().equals(remoteAmount.path("value").asText())
+          && rr.getCurrency().equals(remoteAmount.path("currency_code").asText());
+      if (!amountMatches) {
+        outbox.record("order", rr.getOrderRequestId(), "REFUND_REQUEST_UNCLEAR",
+            Map.of("refundRequestId", rr.getRefundRequestId(), "refundId", rr.getPaypalRefundId(),
+                "reason", "REFUND_AMOUNT_MISMATCH"));
+        return;
+      }
       rr.setState(RefundRequest.COMPLETED);
       rr.setCompletedAt(OffsetDateTime.now());
       refundRequests.save(rr);

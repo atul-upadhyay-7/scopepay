@@ -176,7 +176,7 @@ export default function Receipts(){
      {selectedOrder.orderId&&<div className="border-t border-border pt-3">
       <div className="flex flex-wrap gap-2">
        <Button variant="outline" size="sm" onClick={replay} disabled={replaying}>{replaying?'Replaying...':'Replay this request'}</Button>
-       {selectedOrder.state==='COMPLETED'&&<Button variant="outline" size="sm" onClick={refund} disabled={refunding}>{refunding?'Refunding...':'Refund this payment'}</Button>}
+       {selectedOrder.state==='COMPLETED'&&!(data.refundRequests||[]).some(r=>r.orderRequestId===selectedOrder.requestId&&!['FAILED'].includes(r.state))&&<Button variant="outline" size="sm" onClick={refund} disabled={refunding}>{refunding?'Refunding...':'Refund this payment'}</Button>}
        {config?.demoTools&&selectedOrder.captureId&&<Button variant="outline" size="sm" onClick={simulate} disabled={simulating}>{simulating?'Simulating...':'Simulate webhook'}</Button>}
       </div>
       <p className="mt-1.5 text-xs text-muted-foreground">Replay sends the same idempotency key again to prove a retry cannot double-charge.{config?.demoTools&&selectedOrder.captureId?' Simulate webhook sends a synthetic PayPal webhook through the real verification path.':''}</p>

@@ -123,12 +123,25 @@ public class RefundRequestController {
         || !body.has("acknowledge") || !body.get("acknowledge").asBoolean(false))
       throw new ScopeException("REVIEW_ACKNOWLEDGMENT_REQUIRED", 400);
     String owner = SessionGate.ownerHash(request);
-    RefundRequest row = refundRequests.findById(id)
+    RefundRequest row = refundRequests.findWithLockByRefundRequestId(id)
         .filter(r -> owner.equals(r.getOwnerHash()))
         .orElseThrow(() -> new ScopeException("REFUND_REQUEST_NOT_FOUND", 404));
     if (RefundRequest.COMPLETED.equals(row.getState())) return ResponseEntity.ok(view(row));
-    if (!RefundRequest.DRAFT.equals(row.getState()))
-      throw new ScopeException("REFUND_REQUEST_NOT_ACTIONABLE", 409);
+    // DRAFT rows, and UNCLEAR rows with no PayPal refund id (nothing reached PayPal as far as we
+    // can prove), may (re-)send: the same PayPal-Request-Id replays one attempt, never two.
+    boolean retryable = RefundRequest.DRAFT.equals(row.getState())
+        || (RefundRequest.UNCLEAR.equals(row.getState()) && row.getPaypalRefundId() == null);
+    if (!retryable) throw new ScopeException("REFUND_REQUEST_NOT_ACTIONABLE", 409);
+    // Lock the parent order row: concurrent approvals of DIFFERENT requests on the same
+    // capture, and the legacy full-refund path, all serialize on this row, so the cap
+    // re-check below can never be passed by two approvals at once.
+    SandboxOrder order = orders.findWithLockByRequestId(row.getOrderRequestId())
+        .orElseThrow(() -> new ScopeException("ORDER_NOT_FOUND", 404));
+    if (!"COMPLETED".equals(order.getState())) throw new ScopeException("ORDER_NOT_COMPLETED", 409);
+    // The cap is enforced again at approve time: other requests may have committed since create.
+    BigDecimal committed = committed(row.getOrderRequestId());
+    BigDecimal remaining = new BigDecimal(AppConfig.PRICE_VALUE).subtract(committed);
+    if (row.getAmount().compareTo(remaining) > 0) throw new ScopeException("REFUND_EXCEEDS_REMAINING", 409);
 
     JsonNode data;
     try {
@@ -141,7 +154,11 @@ public class RefundRequestController {
     }
     row.setApprovedAt(OffsetDateTime.now());
     String refundId = data.path("id").asText("");
-    if ("COMPLETED".equals(data.path("status").asText()) && !refundId.isEmpty()) {
+    // Fail closed unless PayPal's own response confirms the exact amount and currency we sent.
+    JsonNode remoteAmount = data.path("amount");
+    boolean amountMatches = row.getAmount().setScale(2).toPlainString().equals(remoteAmount.path("value").asText())
+        && row.getCurrency().equals(remoteAmount.path("currency_code").asText());
+    if ("COMPLETED".equals(data.path("status").asText()) && !refundId.isEmpty() && amountMatches) {
       row.setState(RefundRequest.COMPLETED);
       row.setPaypalRefundId(refundId);
       row.setCompletedAt(OffsetDateTime.now());
@@ -157,7 +174,8 @@ public class RefundRequestController {
     if (!refundId.isEmpty()) row.setPaypalRefundId(refundId);
     refundRequests.save(row);
     outbox.record("order", row.getOrderRequestId(), "REFUND_REQUEST_UNCLEAR",
-        Map.of("refundRequestId", row.getRefundRequestId(), "refundId", refundId));
+        Map.of("refundRequestId", row.getRefundRequestId(), "refundId", refundId,
+            "reason", "COMPLETED".equals(data.path("status").asText()) ? "REFUND_AMOUNT_MISMATCH" : "REFUND_NOT_COMPLETED"));
     Map<String, Object> out = new LinkedHashMap<>(view(row));
     out.put("error", "REFUND_NOT_COMPLETED");
     return ResponseEntity.status(HttpStatus.CONFLICT).body(out);

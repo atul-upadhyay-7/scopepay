@@ -49,7 +49,7 @@ public class TestStubs {
     public void reset() {
       creates.set(0); captures.set(0); refunds.set(0);
       refundBehavior = TestStubs.StubPayPal::completedRefund;
-      partialRefundBehavior = StubPayPal::defaultPartialRefund;
+      partialRefundBehavior = null;
       getRefundBehavior = () -> MAPPER.createObjectNode().put("id", "REFUND-PARTIAL-1").put("status", "COMPLETED");
       comparisonBehavior = TestStubs::defaultComparison;
       verifyStatus = "SUCCESS";
@@ -93,7 +93,7 @@ public class TestStubs {
       return refundBehavior.get();
     }
 
-    public volatile Supplier<JsonNode> partialRefundBehavior = StubPayPal::defaultPartialRefund;
+    public volatile Supplier<JsonNode> partialRefundBehavior = null; // null = echo the requested amount as COMPLETED
     public volatile Supplier<JsonNode> getRefundBehavior = () ->
         MAPPER.createObjectNode().put("id", "REFUND-PARTIAL-1").put("status", "COMPLETED");
     public volatile String lastPartialValue;
@@ -111,7 +111,11 @@ public class TestStubs {
     public JsonNode refundCapture(String captureId, String value, String currency, String idempotencyKey) {
       refunds.incrementAndGet();
       lastPartialValue = value; lastPartialCurrency = currency; lastPartialKey = idempotencyKey;
-      return partialRefundBehavior.get();
+      if (partialRefundBehavior != null) return partialRefundBehavior.get();
+      var root = MAPPER.createObjectNode();
+      root.put("id", "REFUND-PARTIAL-1").put("status", "COMPLETED");
+      root.putObject("amount").put("value", value).put("currency_code", currency);
+      return root;
     }
 
     @Override

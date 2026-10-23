@@ -37,6 +37,7 @@ class RefundRequestApiTest {
   @Autowired com.scopepay.store.LedgerService ledgerService;
   @Autowired com.scopepay.store.OutboxService outboxService;
   @Autowired org.springframework.transaction.PlatformTransactionManager txManager;
+  @Autowired com.scopepay.store.OutboxEventRepository events;
 
   @BeforeEach
   void reset() { refundRequests.deleteAll(); orders.deleteAll(); drafts.deleteAll(); ledger.deleteAll(); paypal.reset(); }
@@ -168,11 +169,101 @@ class RefundRequestApiTest {
     mvc.perform(post("/api/refund-requests/" + id + "/approve", "{\"acknowledge\":true}"))
         .andExpect(status().isConflict())
         .andExpect(jsonPath("$.error").value("REFUND_REQUEST_NOT_ACTIONABLE"));
-    paypal.getRefundBehavior = () -> TestStubs.MAPPER.createObjectNode()
+    paypal.getRefundBehavior = () -> { var n = TestStubs.MAPPER.createObjectNode()
         .put("id", "REFUND-PEND-1").put("status", "COMPLETED");
+        n.putObject("amount").put("value", "3.50").put("currency_code", "USD"); return n; };
     new ReconcilerService(paypal, orders, ledgerService, outboxService,
         new io.micrometer.core.instrument.simple.SimpleMeterRegistry(), txManager, refundRequests).reconcile();
     assertEquals("COMPLETED", refundRequests.findById(id).orElseThrow().getState());
+  }
+
+  @Test
+  void reconcilerNeverCompletesOnAmountMismatch() throws Exception {
+    createScopeAndCapture();
+    paypal.partialRefundBehavior = () -> TestStubs.MAPPER.createObjectNode()
+        .put("id", "REFUND-PEND-2").put("status", "PENDING");
+    String id = createRequest();
+    mvc.perform(post("/api/refund-requests/" + id + "/approve", "{\"acknowledge\":true}"))
+        .andExpect(status().isConflict());
+    assertEquals("UNCLEAR", refundRequests.findById(id).orElseThrow().getState());
+    // PayPal reports COMPLETED but for a different amount than we sent: no ledger, stays UNCLEAR.
+    paypal.getRefundBehavior = () -> { var n = TestStubs.MAPPER.createObjectNode()
+        .put("id", "REFUND-PEND-2").put("status", "COMPLETED");
+        n.putObject("amount").put("value", "10.00").put("currency_code", "USD"); return n; };
+    new ReconcilerService(paypal, orders, ledgerService, outboxService,
+        new io.micrometer.core.instrument.simple.SimpleMeterRegistry(), txManager, refundRequests).reconcile();
+    assertEquals("UNCLEAR", refundRequests.findById(id).orElseThrow().getState());
+    assertTrue(events.findByAggregateIdOrderByCreatedAtAsc(
+        refundRequests.findById(id).orElseThrow().getOrderRequestId()).stream()
+        .noneMatch(e -> "REFUND_REQUEST_COMPLETED".equals(e.getType())));
+  }
+
+  @Test
+  void legacyFullRefundBlockedOnceMakeGoodExists() throws Exception {
+    createScopeAndCapture();
+    String id = createRequest();
+    mvc.perform(post("/api/refund-requests/" + id + "/approve", "{\"acknowledge\":true}"))
+        .andExpect(status().isOk());
+    mvc.perform(post("/api/orders/ORDER12345/refund", "{}"))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.error").value("USE_MAKE_GOOD_REFUND"));
+    assertEquals(1, paypal.refunds.get(), "no full refund attempted after a partial exists");
+  }
+
+  @Test
+  void approveTimeCapBlocksSecondApproval() throws Exception {
+    createScopeAndCapture();
+    String body = "{\"amount\":\"6.00\",\"reason\":\"r\",\"deliveryText\":\"" + DELIVERY + "\"}";
+    String first = mvc.perform(post("/api/orders/ORDER12345/refund-requests", body))
+        .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString()
+        .replaceAll(".*\\\"refundRequestId\\\":\\\"([^\\\"]+)\\\".*", "$1");
+    String second = mvc.perform(post("/api/orders/ORDER12345/refund-requests", body))
+        .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString()
+        .replaceAll(".*\\\"refundRequestId\\\":\\\"([^\\\"]+)\\\".*", "$1");
+    mvc.perform(post("/api/refund-requests/" + first + "/approve", "{\"acknowledge\":true}"))
+        .andExpect(status().isOk());
+    mvc.perform(post("/api/refund-requests/" + second + "/approve", "{\"acknowledge\":true}"))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.error").value("REFUND_EXCEEDS_REMAINING"));
+    assertEquals(1, paypal.refunds.get());
+  }
+
+  @Test
+  void remoteAmountMismatchNeverCompletes() throws Exception {
+    createScopeAndCapture();
+    paypal.partialRefundBehavior = () -> {
+      var root = TestStubs.MAPPER.createObjectNode();
+      root.put("id", "REFUND-PARTIAL-9").put("status", "COMPLETED");
+      root.putObject("amount").put("value", "9.99").put("currency_code", "USD");
+      return root;
+    };
+    String id = createRequest();
+    mvc.perform(post("/api/refund-requests/" + id + "/approve", "{\"acknowledge\":true}"))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.error").value("REFUND_NOT_COMPLETED"));
+    var row = refundRequests.findById(id).orElseThrow();
+    org.junit.jupiter.api.Assertions.assertEquals("UNCLEAR", row.getState());
+    org.junit.jupiter.api.Assertions.assertEquals("REFUND-PARTIAL-9", row.getPaypalRefundId());
+    org.junit.jupiter.api.Assertions.assertTrue(
+        ledger.findAll().stream().noneMatch(e -> e.getAmount().toPlainString().equals("9.99")),
+        "a mismatched PayPal answer posts no ledger reversal");
+  }
+
+  @Test
+  void unclearWithoutRefundIdCanRetryWithSameAttemptKey() throws Exception {
+    createScopeAndCapture();
+    paypal.partialRefundBehavior = () -> TestStubs.MAPPER.createObjectNode().put("status", "PENDING");
+    String id = createRequest();
+    mvc.perform(post("/api/refund-requests/" + id + "/approve", "{\"acknowledge\":true}"))
+        .andExpect(status().isConflict());
+    org.junit.jupiter.api.Assertions.assertEquals("UNCLEAR", refundRequests.findById(id).orElseThrow().getState());
+    org.junit.jupiter.api.Assertions.assertNull(refundRequests.findById(id).orElseThrow().getPaypalRefundId());
+    paypal.partialRefundBehavior = TestStubs.StubPayPal::defaultPartialRefund;
+    mvc.perform(post("/api/refund-requests/" + id + "/approve", "{\"acknowledge\":true}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.state").value("COMPLETED"));
+    org.junit.jupiter.api.Assertions.assertEquals(id, paypal.lastPartialKey,
+        "the retry replays the same PayPal-Request-Id, so PayPal cannot double-refund");
   }
 
   @Test
