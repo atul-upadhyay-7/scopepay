@@ -6,14 +6,17 @@ import {Button} from '@/components/ui/button';
 import {Card,CardContent,CardDescription,CardHeader,CardTitle} from '@/components/ui/card';
 import {Dialog,DialogContent,DialogDescription,DialogHeader,DialogTitle} from '@/components/ui/dialog';
 import {Table,TableBody,TableCell,TableRow} from '@/components/ui/table';
+import {Textarea} from '@/components/ui/textarea';
 import ScopeGrid from '@/components/ScopeGrid.jsx';
 import {Tabs,TabsContent,TabsList,TabsTrigger} from '@/components/ui/tabs';
 const EVENT_LABELS={ORDER_CREATED:'Sandbox order created',ORDER_PENDING_REVIEW:'Capture unclear - held for review, never shown as paid',ORDER_COMPLETED:'Payment captured and verified server-side',WEBHOOK_CONFIRMED:'PayPal webhook verified and recorded',WEBHOOK_REJECTED:'A webhook failed verification and was ignored',WEBHOOK_IGNORED:'A verified webhook did not match any order',ORDER_REFUNDED:'Payment refunded in the sandbox, ledger reversed',ORDER_REFUND_FAILED:'Refund answer was unclear - the order stays completed and safe'};
 const ACCOUNT_LABELS={paypal_sandbox_clearing:'PayPal sandbox clearing',demo_revenue:'Demo revenue'};
+const VERDICT_LABELS={CLAIMED_ADDRESSED:['ok','Claimed addressed'],CLAIMED_PARTIAL:['warn','Claimed partial'],NOT_EVIDENCED:['default','Not evidenced'],UNCLEAR:['warn','Unclear']};
+const RR_LABELS={DRAFT:['default','Awaiting approval'],COMPLETED:['ok','Refunded'],UNCLEAR:['warn','Needs check'],FAILED:['default','Failed']};
 const LABELS={DRAFT_REQUIRES_REVIEW:['default','Draft'],REVIEWED_FOR_SANDBOX:['ok','Reviewed'],CREATING:['default','Creating'],CREATED:['default','Order created'],PENDING_REVIEW:['warn','Needs check'],COMPLETED:['ok','Completed'],REFUNDED:['default','Refunded']};
 function StateBadge({state}){const [variant,label]=LABELS[state]||['default',state];return <Badge variant={variant}>{label}</Badge>;}
 export default function Receipts(){
- const {loadReceipts,replayOrder,refundOrder,simulateWebhook,config}=useScopePay();
+ const {loadReceipts,replayOrder,refundOrder,simulateWebhook,createRefundRequest,approveRefundRequest,config}=useScopePay();
  const [data,setData]=useState(null),[error,setError]=useState('');
  const [selected,setSelected]=useState(null);
  const [selectedOrder,setSelectedOrder]=useState(null);
@@ -23,6 +26,25 @@ export default function Receipts(){
  const [refundResult,setRefundResult]=useState(null);
  const [webhookResult,setWebhookResult]=useState(null);
  const [simulating,setSimulating]=useState(false);
+ const [mgText,setMgText]=useState(''),[mgAmount,setMgAmount]=useState(''),[mgReason,setMgReason]=useState('');
+ const [mgBusy,setMgBusy]=useState(false),[mgError,setMgError]=useState('');
+ const [mgDraft,setMgDraft]=useState(null),[mgResult,setMgResult]=useState(null);
+ async function mgCreate(){if(!selectedOrder||mgBusy)return;setMgBusy(true);setMgError('');setMgResult(null);
+  try{const r=await createRefundRequest(selectedOrder.orderId,{amount:mgAmount.trim(),reason:mgReason.trim(),deliveryText:mgText});
+   if(r.status===201&&r.data.refundRequestId){setMgDraft(r.data);const fresh=await loadReceipts();setData(fresh);}
+   else setMgError(`The server refused the request: ${r.data.error||('HTTP '+r.status)}. Nothing was created.`);
+  }catch(e){setMgError(`Request failed: ${e.message}. Nothing was created.`);}
+  finally{setMgBusy(false);}}
+ async function mgApprove(){if(!mgDraft||mgBusy)return;setMgBusy(true);setMgError('');setMgResult(null);
+  try{const r=await approveRefundRequest(mgDraft.refundRequestId);
+   const fresh=await loadReceipts();setData(fresh);
+   const updated=fresh.orders.find(x=>x.requestId===selectedOrder.requestId);if(updated)setSelectedOrder(updated);
+   if(r.status===200&&r.data.state==='COMPLETED'){setMgResult({ok:true,text:`Make-good refund completed in the sandbox (refund ${r.data.paypalRefundId}, ${r.data.amount} ${r.data.currency}). The ledger below shows the partial reversal.`});setMgDraft(null);setMgText('');setMgAmount('');setMgReason('');}
+   else if(r.status===409&&r.data.error==='REFUND_NOT_COMPLETED'){setMgDraft(r.data);setMgResult({ok:false,text:'PayPal did not confirm the refund (it may be pending). The request is held as Needs check; the reconciler re-reads PayPal and only PayPal\u2019s own record can complete it.'});}
+   else setMgResult({ok:false,text:`Refund answer was unclear (HTTP ${r.status}: ${r.data.error||'unknown'}). Nothing was treated as refunded.`});
+  }catch(e){setMgResult({ok:false,text:`Approval failed: ${e.message}. Nothing was treated as refunded.`});}
+  finally{setMgBusy(false);}}
+ function openOrder(o){setSelectedOrder(o);setMgDraft(null);setMgError('');setMgResult(null);setMgText('');setMgAmount('');setMgReason('');}
  async function simulate(){if(!selectedOrder||simulating)return;setSimulating(true);setWebhookResult(null);
   try{const r=await simulateWebhook(selectedOrder.requestId);
    const fresh=await loadReceipts();const updated=fresh.orders.find(x=>x.requestId===selectedOrder.requestId);if(updated)setSelectedOrder(updated);
@@ -72,7 +94,7 @@ export default function Receipts(){
    <TabsContent value="orders">
     {data.orders.length===0?<Card><CardContent className="pt-6 text-sm text-muted-foreground">No orders in this session yet.</CardContent></Card>:
     <Card><CardContent className="pt-4">
-     <ScopeGrid rowData={data.orders} onRowClicked={e=>setSelectedOrder(e.data)} columnDefs={[
+     <ScopeGrid rowData={data.orders} onRowClicked={e=>openOrder(e.data)} columnDefs={[
       {headerName:'Order',field:'orderId',flex:0.9,minWidth:120,cellRenderer:p=><span className="font-mono text-xs">{p.value||'(creating)'}</span>},
       {headerName:'State',field:'state',flex:0.7,minWidth:110,cellRenderer:p=><span className="flex h-full items-center"><StateBadge state={p.value}/></span>,filter:true},
       {headerName:'Capture',field:'captureId',flex:0.9,minWidth:110,cellRenderer:p=><span className="font-mono text-xs">{p.value||'-'}</span>},
@@ -161,6 +183,38 @@ export default function Receipts(){
       {replayResult&&<p className={`mt-2 rounded-md border px-3 py-2 text-xs ${replayResult.ok?'border-primary/40 bg-accent text-accent-foreground':'border-destructive/40 bg-destructive/10 text-foreground'}`}>{replayResult.text}</p>}
       {refundResult&&<p className={`mt-2 rounded-md border px-3 py-2 text-xs ${refundResult.ok?'border-primary/40 bg-accent text-accent-foreground':'border-destructive/40 bg-destructive/10 text-foreground'}`}>{refundResult.text}</p>}
       {webhookResult&&<p className={`mt-2 rounded-md border px-3 py-2 text-xs ${webhookResult.ok?'border-primary/40 bg-accent text-accent-foreground':'border-destructive/40 bg-destructive/10 text-foreground'}`}>{webhookResult.text}</p>}
+     </div>}
+     {selectedOrder.state==='COMPLETED'&&selectedOrder.scopeId&&<div className="border-t border-border pt-3">
+      <span className="text-muted-foreground">Make-good refund, with evidence comparison</span>
+      <p className="mt-1 text-xs text-muted-foreground">If the client reports missing work, paste the delivery account below. The AI compares it with the agreed scope and cites what it found. The comparison reflects only what the account claims - it never verifies actual delivery, links in the account are not opened, and the AI never sets an amount. You decide whether to refund and how much.</p>
+      {(data.refundRequests||[]).filter(r=>r.orderRequestId===selectedOrder.requestId).length>0&&<ul className="mt-2 space-y-1.5">
+       {(data.refundRequests||[]).filter(r=>r.orderRequestId===selectedOrder.requestId).map(r=>{const[v,label]=RR_LABELS[r.state]||['default',r.state];return <li key={r.refundRequestId} className="flex items-center justify-between gap-2 rounded-md border border-border px-2.5 py-1.5 text-xs">
+        <span className="tabular-nums">{r.amount} {r.currency}</span><Badge variant={v}>{label}</Badge>
+        <span className="font-mono text-muted-foreground">{r.paypalRefundId||'-'}</span></li>;})}
+      </ul>}
+      {!mgDraft&&<>
+       <Textarea className="mt-2" maxLength={6000} placeholder="What was delivered, in your own words (self-reported account)" value={mgText} onChange={e=>setMgText(e.target.value)}/>
+       <div className="mt-2 flex flex-wrap gap-2">
+        <input className="w-24 rounded-md border border-input bg-background px-2.5 py-1.5 font-mono text-xs tabular-nums" placeholder="0.00" value={mgAmount} onChange={e=>setMgAmount(e.target.value)}/>
+        <input className="min-w-0 flex-1 rounded-md border border-input bg-background px-2.5 py-1.5 text-xs" placeholder="Reason (e.g. client reports missing work)" maxLength={500} value={mgReason} onChange={e=>setMgReason(e.target.value)}/>
+        <Button variant="outline" size="sm" disabled={mgBusy||mgText.trim().length<20||!mgAmount.trim()||!mgReason.trim()} onClick={mgCreate}>{mgBusy?'Comparing...':'Compare and prepare refund'}</Button>
+       </div>
+      </>}
+      {mgDraft&&<div className="mt-2 rounded-md border border-border p-2.5">
+       <span className="text-xs text-muted-foreground">Comparison - claim coverage only, not verified delivery</span>
+       <ul className="mt-2 space-y-2.5">{mgDraft.comparison.comparisons.map((c,i)=>{const[v,label]=VERDICT_LABELS[c.verdict]||['default',c.verdict];return <li key={i}>
+        <div className="flex items-center justify-between gap-2"><span className="text-xs font-medium">{c.deliverable}</span><Badge variant={v}>{label}</Badge></div>
+        {c.quote&&<blockquote className="mb-0.5 mt-1 border-l-2 border-ember bg-background px-3 py-2 font-mono text-[12px] leading-relaxed text-secondary-foreground">"{c.quote}"</blockquote>}
+        <p className="mt-0.5 text-xs text-muted-foreground">{c.note}</p>
+       </li>;})}</ul>
+       <p className="mt-2 text-xs text-muted-foreground">{mgDraft.comparison.overallNote}</p>
+       <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-border pt-2.5">
+        <span className="text-xs">Refund <span className="font-mono font-semibold tabular-nums">{mgDraft.amount} {mgDraft.currency}</span> to the buyer?</span>
+        <Button size="sm" disabled={mgBusy} onClick={mgApprove}>{mgBusy?'Refunding...':'Approve this refund'}</Button>
+       </div>
+      </div>}
+      {mgError&&<p className="mt-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-foreground">{mgError}</p>}
+      {mgResult&&<p className={`mt-2 rounded-md border px-3 py-2 text-xs ${mgResult.ok?'border-primary/40 bg-accent text-accent-foreground':'border-destructive/40 bg-destructive/10 text-foreground'}`}>{mgResult.text}</p>}
      </div>}
     </div>
    </DialogContent>}
