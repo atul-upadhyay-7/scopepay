@@ -4,7 +4,7 @@ Honest scoping: what is proven by automated tests, what used scripted stand-ins,
 
 ## Automated proof (runs anywhere, no external services)
 
-`cd backend && mvn test` - 161 JUnit tests, 0 failures. One of them (PostgresSchemaValidationTest) boots the app against a real embedded PostgreSQL with Flyway and Hibernate validation, exactly like production config; the rest run against an in-memory H2 database or as plain unit tests, with stubbed PayPal and AI providers. That guard was added after a real install on October 18 caught a migration/entity drift (ledger currency CHAR(3) vs VARCHAR) that the H2 suite could not see - fixed by migration V3.
+`cd backend && mvn test` - 165 JUnit tests, 0 failures. One of them (PostgresSchemaValidationTest) boots the app against a real embedded PostgreSQL with Flyway and Hibernate validation, exactly like production config; the rest run against an in-memory H2 database or as plain unit tests, with stubbed PayPal and AI providers. That guard was added after a real install on October 18 caught a migration/entity drift (ledger currency CHAR(3) vs VARCHAR) that the H2 suite could not see - fixed by migration V3.
 
 - **AI extraction**: schema validation, verbatim evidence grounding (`UNGROUNDED_DELIVERABLE`/`UNGROUNDED_CONFLICT` on mismatch), disabled/timeout/refusal paths, no canned fallback.
 - **Review gate**: orders require a saved review from the same session; the acknowledgment is required.

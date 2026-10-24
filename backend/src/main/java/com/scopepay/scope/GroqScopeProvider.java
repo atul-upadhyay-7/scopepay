@@ -13,6 +13,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /** One fixed inference endpoint/model. No tools, retries, paid fallback or client keys. */
 public class GroqScopeProvider implements ScopeProvider {
+  private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(GroqScopeProvider.class);
   private static final String ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
   private static final ObjectMapper MAPPER = new ObjectMapper();
   private final String apiKey;
@@ -27,6 +28,21 @@ public class GroqScopeProvider implements ScopeProvider {
     this(apiKey, syntheticOnly, maxRequests, ENDPOINT, HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build());
   }
 
+  /** Bounded allowlist for externally-influenced identifiers in logs: letters, digits, '.', '_'
+      and '-' pass, anything else becomes '?', capped at 40 chars. Provider metadata (error codes,
+      finish reasons) is untrusted input and can carry control characters or oversized content. */
+  private static String safe(String value) {
+    if (value == null) return "";
+    StringBuilder out = new StringBuilder(Math.min(value.length(), 40));
+    for (int i = 0; i < value.length() && out.length() < 40; i++) {
+      char c = value.charAt(i);
+      boolean ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+          || c == '.' || c == '_' || c == '-';
+      out.append(ok ? c : '?');
+    }
+    return out.toString();
+  }
+
   /** Test constructor: endpoint and transport injection. */
   public GroqScopeProvider(String apiKey, boolean syntheticOnly, int maxRequests, String endpoint, HttpClient client) {
     this.apiKey = apiKey; this.syntheticOnly = syntheticOnly; this.maxRequests = maxRequests;
@@ -35,7 +51,11 @@ public class GroqScopeProvider implements ScopeProvider {
 
   @Override
   public GenerateResult generate(String instructions, String brief, String schemaJson) throws Exception {
-    if (!syntheticOnly || requests.get() >= maxRequests) throw new IllegalStateException("AI request policy limit");
+    if (!syntheticOnly || requests.get() >= maxRequests) {
+      LOG.warn("AI request rejected by local policy: syntheticOnly={} requests={} maxRequests={}",
+          syntheticOnly, requests.get(), maxRequests);
+      throw new IllegalStateException("AI request policy limit");
+    }
     requests.incrementAndGet();
     ObjectNode body = MAPPER.createObjectNode();
     body.put("model", "openai/gpt-oss-20b");
@@ -56,7 +76,13 @@ public class GroqScopeProvider implements ScopeProvider {
         .header("Authorization", "Bearer " + apiKey)
         .header("Content-Type", "application/json")
         .POST(HttpRequest.BodyPublishers.ofString(MAPPER.writeValueAsString(body))).build();
-    HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+    HttpResponse<String> response;
+    try {
+      response = client.send(request, HttpResponse.BodyHandlers.ofString());
+    } catch (java.io.IOException | InterruptedException e) {
+      LOG.warn("AI provider transport failure: {}", e.getClass().getSimpleName());
+      throw e;
+    }
     if (response.statusCode() != 200) {
       // Some provider refusals arrive as a schema-validation 400. Accept only an
       // exact refusal object for classification, never a failed draft as success.
@@ -71,14 +97,42 @@ public class GroqScopeProvider implements ScopeProvider {
           }
         } catch (Exception ignored) {}
       }
+      String errorCode = "";
+      String errorType = "";
+      try {
+        JsonNode err = MAPPER.readTree(response.body()).path("error");
+        errorCode = err.path("code").asText("");
+        errorType = err.path("type").asText("");
+      } catch (Exception ignored) {}
+      LOG.warn("AI provider HTTP {} errorCode={} errorType={}", response.statusCode(),
+          safe(errorCode), safe(errorType));
       throw new IllegalStateException("AI provider unavailable");
     }
-    JsonNode data = MAPPER.readTree(response.body());
+    JsonNode data;
+    try {
+      data = MAPPER.readTree(response.body());
+    } catch (Exception e) {
+      LOG.warn("AI provider response body unparseable: {}", e.getClass().getSimpleName());
+      throw e;
+    }
     JsonNode choice = data.path("choices").isArray() && !data.path("choices").isEmpty() ? data.path("choices").get(0) : null;
-    if (choice == null) throw new IllegalStateException("Incomplete AI output");
-    if (choice.path("message").path("refusal").isTextual()) return GenerateResult.ofRefusal();
-    if (!"stop".equals(choice.path("finish_reason").asText()) || !choice.path("message").path("content").isTextual())
+    if (choice == null) {
+      LOG.warn("AI output incomplete: no choices in response");
       throw new IllegalStateException("Incomplete AI output");
-    return GenerateResult.ofData(MAPPER.readTree(choice.path("message").path("content").asText()));
+    }
+    if (choice.path("message").path("refusal").isTextual()) return GenerateResult.ofRefusal();
+    if (!"stop".equals(choice.path("finish_reason").asText()) || !choice.path("message").path("content").isTextual()) {
+      LOG.warn("AI output incomplete: finishReason={} contentPresent={} completionTokens={} reasoningTokens={}",
+          safe(choice.path("finish_reason").asText("")), choice.path("message").path("content").isTextual(),
+          data.path("usage").path("completion_tokens").asInt(-1),
+          data.path("usage").path("completion_tokens_details").path("reasoning_tokens").asInt(-1));
+      throw new IllegalStateException("Incomplete AI output");
+    }
+    try {
+      return GenerateResult.ofData(MAPPER.readTree(choice.path("message").path("content").asText()));
+    } catch (Exception e) {
+      LOG.warn("AI content not parseable as JSON: {}", e.getClass().getSimpleName());
+      throw e;
+    }
   }
 }
