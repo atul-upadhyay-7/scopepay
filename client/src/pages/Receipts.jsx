@@ -36,7 +36,7 @@ export default function Receipts(){
    else setMgError(`The server refused the request: ${r.data.error||('HTTP '+r.status)}. Nothing was created.`);
   }catch(e){setMgError(`Request failed: ${e.message}. Nothing was created.`);}
   finally{setMgBusy(false);}}
- async function mgApprove(){if(!mgDraft||mgBusy)return;setMgBusy(true);setMgError('');setMgResult(null);
+ async function mgApprove(){if(!mgDraft||mgBusy||mgDraft.state!=='DRAFT')return;setMgBusy(true);setMgError('');setMgResult(null);
   try{const r=await approveRefundRequest(mgDraft.refundRequestId);
    const fresh=await loadReceipts();setData(fresh);
    const updated=fresh.orders.find(x=>x.requestId===selectedOrder.requestId);if(updated)setSelectedOrder(updated);
@@ -239,8 +239,13 @@ export default function Receipts(){
        </li>;})}</ul>
        <p className="mt-2 text-xs text-muted-foreground">{mgDraft.comparison.overallNote}</p>
        <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-border pt-2.5">
-        <span className="text-xs">Refund <span className="font-mono font-semibold tabular-nums">{mgDraft.amount} {mgDraft.currency}</span> to the buyer?</span>
-        <Button size="sm" disabled={mgBusy} onClick={mgApprove}>{mgBusy?'Refunding...':'Approve this refund'}</Button>
+        {(!mgDraft.state||mgDraft.state==='DRAFT')&&<>
+         <span className="text-xs">Refund <span className="font-mono font-semibold tabular-nums">{mgDraft.amount} {mgDraft.currency}</span> to the buyer?</span>
+         <Button size="sm" disabled={mgBusy} onClick={mgApprove}>{mgBusy?'Refunding...':'Approve this refund'}</Button>
+        </>}
+        {mgDraft.state==='UNCLEAR'&&<span className="text-xs text-muted-foreground">Held as Needs check - the reconciler re-reads PayPal automatically, and only PayPal's own record can complete it. There is nothing to approve again.</span>}
+        {mgDraft.state==='COMPLETED'&&<span className="text-xs text-muted-foreground">Refunded in the sandbox. There is nothing to approve again.</span>}
+        {mgDraft.state==='FAILED'&&<span className="text-xs text-muted-foreground">PayPal marked this refund failed; nothing was refunded. Start a fresh comparison if you want to try again.</span>}
        </div>
       </div>}
       {mgError&&<p className="mt-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-foreground">{mgError}</p>}
