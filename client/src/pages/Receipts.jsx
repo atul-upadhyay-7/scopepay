@@ -11,7 +11,7 @@ import ScopeGrid from '@/components/ScopeGrid.jsx';
 import {Tabs,TabsContent,TabsList,TabsTrigger} from '@/components/ui/tabs';
 const EVENT_LABELS={ORDER_CREATED:'Sandbox order created',ORDER_PENDING_REVIEW:'Capture unclear - held for review, never shown as paid',ORDER_COMPLETED:'Payment captured and verified server-side',WEBHOOK_CONFIRMED:'PayPal webhook verified and recorded',WEBHOOK_REJECTED:'A webhook failed verification and was ignored',WEBHOOK_IGNORED:'A verified webhook did not match any order',ORDER_REFUNDED:'Payment refunded in the sandbox, ledger reversed',ORDER_REFUND_FAILED:'Refund answer was unclear - the order stays completed and safe',ORDER_RECOVERED:'Order recovered into a later session with a one-time console code'};
 const ACCOUNT_LABELS={paypal_sandbox_clearing:'PayPal sandbox clearing',demo_revenue:'Demo revenue'};
-const VERDICT_LABELS={CLAIMED_ADDRESSED:['ok','Claimed addressed'],CLAIMED_PARTIAL:['warn','Claimed partial'],NOT_EVIDENCED:['default','Not evidenced'],UNCLEAR:['warn','Unclear']};
+const VERDICT_LABELS={CLAIMED_ADDRESSED:['ok','Claimed addressed'],CLAIMED_PARTIAL:['warn','Claimed partial'],NOT_EVIDENCED:['default','Not evidenced'],UNCLEAR:['warn','Unclear'],EXCLUSION_VIOLATED:['warn','Claimed violation'],EXCLUSION_RESPECT_CLAIMED:['ok','Claimed respected'],EXCLUSION_NO_CLAIM:['outline','No claim either way']};
 const RR_LABELS={DRAFT:['default','Awaiting approval'],COMPLETED:['ok','Refunded'],UNCLEAR:['warn','Needs check'],FAILED:['default','Failed']};
 const LABELS={DRAFT_REQUIRES_REVIEW:['default','Draft'],REVIEWED_FOR_SANDBOX:['ok','Reviewed'],CREATING:['default','Creating'],CREATED:['default','Order created'],PENDING_REVIEW:['warn','Needs check'],COMPLETED:['ok','Completed'],REFUNDED:['default','Refunded']};
 function StateBadge({state}){const [variant,label]=LABELS[state]||['default',state];return <Badge variant={variant}>{label}</Badge>;}
@@ -233,7 +233,7 @@ export default function Receipts(){
       {mgDraft&&<div className="mt-2 rounded-md border border-border p-2.5">
        <span className="text-xs text-muted-foreground">Comparison - claim coverage only, not verified delivery</span>
        <ul className="mt-2 space-y-2.5">{mgDraft.comparison.comparisons.map((c,i)=>{const[v,label]=VERDICT_LABELS[c.verdict]||['default',c.verdict];return <li key={i}>
-        <div className="flex items-center justify-between gap-2"><span className="text-xs font-medium">{c.deliverable}</span><Badge variant={v}>{label}</Badge></div>
+        <div className="flex items-center justify-between gap-2"><span className="text-xs font-medium">{c.deliverable}</span><span className="flex items-center gap-1">{c.verdict.startsWith('EXCLUSION_')&&<Badge variant="outline">scope exclusion</Badge>}<Badge variant={v}>{label}</Badge></span></div>
         {c.quote&&<blockquote className="mb-0.5 mt-1 border-l-2 border-ember bg-background px-3 py-2 font-mono text-[12px] leading-relaxed text-secondary-foreground">"{c.quote}"</blockquote>}
         <p className="mt-0.5 text-xs text-muted-foreground">{c.note}</p>
        </li>;})}</ul>

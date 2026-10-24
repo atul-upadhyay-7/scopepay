@@ -33,6 +33,26 @@ CLAIMED_ADDRESSED with a verbatim quote. That is inherent to claim-coverage: the
 records what the submitter CLAIMED, the buyer reads the exact quote, and the buyer decides.
 The comparison is never verified delivery.
 
+## Scope exclusions are not deliverables (found 2026-10-24, mitigated same day)
+
+Live laptop validation showed a scope exclusion ("Do not include visitor login", stored by
+extraction as the deliverable "No visitor login functionality") judged with
+positive-deliverable semantics: a delivery account that said nothing about login scored
+NOT_EVIDENCED, rendering correct silence in the same visual language as missing work.
+
+The comparator now classifies exclusion-phrased items deterministically (conservative
+prefixes: "No ...", "Do not ...", "Without ...", "Exclude(d) ...", "Avoid ...") and enforces a
+separate verdict axis: EXCLUSION_VIOLATED and EXCLUSION_RESPECT_CLAIMED (both require a
+verbatim quote from the account), EXCLUSION_NO_CLAIM (empty quote; means no claim either way,
+never proof of compliance and never a gap), or UNCLEAR for ambiguous mentions. Crossing the
+axes fails closed: positive verdicts are invalid for exclusion items and vice versa. The
+manipulation rules extend to exclusions: claimed compliance from an account containing
+instruction-override wording is downgraded to EXCLUSION_NO_CLAIM, and an exclusion claim
+whose quote shares no content token with the exclusion subject is downgraded the same way.
+
+Residual limitation: the classification is lexical. An exclusion phrased beyond the known
+prefixes is judged as a positive deliverable (the pre-fix behavior), never as a new error.
+
 ## Refund attempts with an unknown outcome never retry
 
 PayPal documents no guaranteed minimum retention for a refund's PayPal-Request-Id. Observed
