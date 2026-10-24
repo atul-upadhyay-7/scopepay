@@ -5,10 +5,11 @@ import {useScopePay} from '../state.jsx';
 import {Eyebrow,Reveal} from '../ui.jsx';
 import {Button} from '@/components/ui/button';
 import {Card,CardContent,CardDescription,CardHeader,CardTitle} from '@/components/ui/card';
+import {Badge} from '@/components/ui/badge';
 import {Checkbox} from '@/components/ui/checkbox';
 import {Label} from '@/components/ui/label';
 export default function Review(){
- const {draft,checked,setChecked,busy,aiMessage,confirmReview}=useScopePay();
+ const {draft,checked,setChecked,busy,aiMessage,confirmReview,config}=useScopePay();
  const navigate=useNavigate();
  async function go(){
   const r=await confirmReview();
@@ -27,6 +28,7 @@ export default function Review(){
     <Eyebrow>Step 2 - review the draft</Eyebrow>
     <CardTitle>Check every word against your brief</CardTitle>
     <CardDescription className="max-w-[580px]">The evidence below is copied verbatim from your brief. If it is wrong or missing, the draft is wrong. Open questions are listed, not hidden.</CardDescription>
+    {config?.aiMode==='fixture'&&<div className="mt-2"><Badge variant="warn">Fixture replay - synthetic demo output, not a live AI run</Badge></div>}
    </CardHeader>
    <CardContent>
     <h3 className={monoH3}>Summary</h3>

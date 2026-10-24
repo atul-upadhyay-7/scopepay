@@ -232,11 +232,21 @@ export default function Receipts(){
       </>}
       {mgDraft&&<div className="mt-2 rounded-md border border-border p-2.5">
        <span className="text-xs text-muted-foreground">Comparison - claim coverage only, not verified delivery</span>
+       {config?.aiMode==='fixture'&&<div className="mt-1.5"><Badge variant="warn">Fixture replay - synthetic demo output, not a live AI run</Badge></div>}
        <ul className="mt-2 space-y-2.5">{mgDraft.comparison.comparisons.map((c,i)=>{const[v,label]=VERDICT_LABELS[c.verdict]||['default',c.verdict];return <li key={i}>
         <div className="flex items-center justify-between gap-2"><span className="text-xs font-medium">{c.deliverable}</span><span className="flex items-center gap-1">{c.verdict.startsWith('EXCLUSION_')&&<Badge variant="outline">scope exclusion</Badge>}<Badge variant={v}>{label}</Badge></span></div>
         {c.quote&&<blockquote className="mb-0.5 mt-1 border-l-2 border-ember bg-background px-3 py-2 font-mono text-[12px] leading-relaxed text-secondary-foreground">"{c.quote}"</blockquote>}
         <p className="mt-0.5 text-xs text-muted-foreground">{c.note}</p>
        </li>;})}</ul>
+       {mgDraft.comparison.complaintCoverage&&<div className="mt-2.5 border-t border-border pt-2.5">
+        <span className="text-xs text-muted-foreground">Client complaint coverage - the complaint is the client&#39;s unverified claim, not evidence</span>
+        {mgDraft.comparison.complaintCoverage.length===0
+         ?<p className="mt-1 text-xs text-muted-foreground">The complaint does not explicitly mention any scoped deliverable. Absence means not mentioned, never agreement.</p>
+         :<ul className="mt-2 space-y-2">{mgDraft.comparison.complaintCoverage.map((cc,i)=><li key={i}>
+           <div className="flex items-center justify-between gap-2"><span className="text-xs font-medium">{cc.deliverable}</span><Badge variant="outline">{cc.claim==='EXPLICITLY_DISPUTED'?'disputed by client':'mentioned by client'}</Badge></div>
+           <blockquote className="mb-0.5 mt-1 border-l-2 border-ember bg-background px-3 py-2 font-mono text-[12px] leading-relaxed text-secondary-foreground">&quot;{cc.quote}&quot;</blockquote>
+          </li>)}</ul>}
+       </div>}
        <p className="mt-2 text-xs text-muted-foreground">{mgDraft.comparison.overallNote}</p>
        <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-border pt-2.5">
         {(!mgDraft.state||mgDraft.state==='DRAFT')&&<>

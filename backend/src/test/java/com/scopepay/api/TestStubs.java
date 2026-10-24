@@ -153,7 +153,12 @@ public class TestStubs {
   @Bean
   public ScopeProvider stubScopeProvider() {
     return (instructions, brief, schema) -> {
-      if (schema.contains("comparisons")) return GenerateResult.ofData(comparisonBehavior.apply(brief));
+      if (schema.contains("comparisons")) {
+        JsonNode out = comparisonBehavior.apply(brief);
+        if (schema.contains("complaintCoverage") && out.isObject() && !out.has("complaintCoverage"))
+          ((com.fasterxml.jackson.databind.node.ObjectNode) out).putArray("complaintCoverage");
+        return GenerateResult.ofData(out);
+      }
       var d = MAPPER.createObjectNode();
       d.put("summary", "A contact website.");
       d.putArray("deliverables").addObject().put("description", "Contact form").put("evidence", "a contact form");

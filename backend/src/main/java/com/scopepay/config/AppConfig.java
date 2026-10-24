@@ -34,6 +34,12 @@ public class AppConfig {
   @Value("${DEMO_TOOLS:false}")
   public boolean demoTools;
   /**
+   * Deterministic replay of one bundled synthetic demo example for judge machines without a Groq
+   * key. Off by default, ignored when a live key exists, never enabled in production properties.
+   */
+  @Value("${DEMO_FIXTURES:false}")
+  public boolean demoFixtures;
+  /**
    * Owner-controlled recovery of orders orphaned by a closed tab session (local demo only).
    * Off by default and fails closed with 404; never enabled in production properties.
    */

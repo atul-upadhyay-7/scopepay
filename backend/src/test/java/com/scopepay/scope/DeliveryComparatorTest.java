@@ -305,4 +305,69 @@ class DeliveryComparatorTest {
     assertFalse(DeliveryComparator.isExclusion("No-code landing page"));
     assertFalse(DeliveryComparator.isExclusion("Knowledge base page"));
   }
+
+  private static final String COMPLAINT = "The contact form never arrived and the client is still waiting for it.";
+
+  private static ObjectNode comparisonWithCoverage() {
+    ObjectNode root = validComparison();
+    var cov = root.putArray("complaintCoverage");
+    cov.addObject().put("deliverable", "Contact form").put("claim", "EXPLICITLY_DISPUTED")
+        .put("quote", "The contact form never arrived");
+    return root;
+  }
+
+  @Test
+  void validComplaintCoveragePasses() {
+    ObjectNode out = assertDoesNotThrow(() -> DeliveryComparator.validateComparison(
+        comparisonWithCoverage(), DELIVERY, scopeDeliverables(), COMPLAINT));
+    assertEquals(1, out.get("complaintCoverage").size());
+  }
+
+  @Test
+  void emptyComplaintCoverageMeansNothingMentioned() {
+    ObjectNode root = validComparison();
+    root.putArray("complaintCoverage");
+    assertDoesNotThrow(() -> DeliveryComparator.validateComparison(root, DELIVERY, scopeDeliverables(), COMPLAINT));
+  }
+
+  @Test
+  void complaintCoverageQuoteMustBeVerbatimFromComplaint() {
+    ObjectNode root = comparisonWithCoverage();
+    ((ObjectNode) root.get("complaintCoverage").get(0)).put("quote", "delivered the contact form");
+    ScopeException e = assertThrows(ScopeException.class, () -> DeliveryComparator.validateComparison(
+        root, DELIVERY, scopeDeliverables(), COMPLAINT));
+    assertEquals("UNGROUNDED_COMPARISON", e.getCode());
+  }
+
+  @Test
+  void complaintPresentButCoverageMissingFailsClosed() {
+    ScopeException e = assertThrows(ScopeException.class, () -> DeliveryComparator.validateComparison(
+        validComparison(), DELIVERY, scopeDeliverables(), COMPLAINT));
+    assertEquals("INVALID_MODEL_OUTPUT", e.getCode());
+  }
+
+  @Test
+  void noComplaintButCoveragePresentFailsClosed() {
+    ScopeException e = assertThrows(ScopeException.class, () -> DeliveryComparator.validateComparison(
+        comparisonWithCoverage(), DELIVERY, scopeDeliverables()));
+    assertEquals("INVALID_MODEL_OUTPUT", e.getCode());
+  }
+
+  @Test
+  void complaintCoverageRejectsUnknownDeliverable() {
+    ObjectNode root = comparisonWithCoverage();
+    ((ObjectNode) root.get("complaintCoverage").get(0)).put("deliverable", "Invented item");
+    ScopeException e = assertThrows(ScopeException.class, () -> DeliveryComparator.validateComparison(
+        root, DELIVERY, scopeDeliverables(), COMPLAINT));
+    assertEquals("UNGROUNDED_COMPARISON", e.getCode());
+  }
+
+  @Test
+  void complaintCoverageRejectsUnknownClaimType() {
+    ObjectNode root = comparisonWithCoverage();
+    ((ObjectNode) root.get("complaintCoverage").get(0)).put("claim", "AGREED_FIXED");
+    ScopeException e = assertThrows(ScopeException.class, () -> DeliveryComparator.validateComparison(
+        root, DELIVERY, scopeDeliverables(), COMPLAINT));
+    assertEquals("INVALID_MODEL_OUTPUT", e.getCode());
+  }
 }

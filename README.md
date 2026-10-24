@@ -9,9 +9,12 @@ Stack: **Spring Boot 3.3 (Java 21) + PostgreSQL** backend, **React + Vite + shad
 - Multi-page React interface (shadcn/ui): synthetic brief, draft summary, deliverables with exact source evidence, questions and conflicts, review, payment, receipts.
 - Server-side extraction validation with clear disabled, timeout, refusal and invalid-output errors. No canned output masquerading as AI.
 - Groq adapter for `openai/gpt-oss-20b`, JSON-object mode with the schema in the system prompt and fail-closed local validation of every response, separate system/brief messages, fixed endpoint, no tools or automatic retry, no paid fallback.
+- **Make-good refund with evidence comparison**: paste the freelancer's delivery account and the AI compares it against the agreed scope, returning per-deliverable claim-coverage verdicts with verbatim quotes - claim coverage only, never verified delivery, never amounts. The human reads the comparison, enters the refund amount and clicks approve: the only amount-specific approval. Execution re-checks the remaining cap against PayPal's own record and reconciles the outcome.
+- **Client complaint as cited input**: the comparison takes the client's complaint as a separate, clearly labelled input. Per deliverable the model may only report EXPLICITLY_DISPUTED or MENTIONED, each with a quote the validator requires to be an exact substring of the complaint; an unmentioned deliverable stays unknown, never agreement. The complaint never changes a verdict and is never treated as evidence.
+- **Fixture replay for reviewers (`DEMO_FIXTURES=true`, no Groq key)**: deterministic replay of one bundled synthetic example through the same fail-closed validators, labelled "fixture replay - synthetic demo output, not a live AI run" in the UI and `/api/config`. It answers only the exact bundled inputs and refuses everything else, so unrelated input is never mapped onto a canned output.
 - Explicit review checkbox and server-saved review tied to the browser session in PostgreSQL.
 - Server-enforced reviewed-scope gate before creating the fixed USD 10.00 demo order.
-- PayPal sandbox SDK v6, Orders v2 create/capture, full-capture refunds, browser buyer approval, server-owned amount, session capability/origin checks, idempotency and stored completion receipt.
+- PayPal sandbox SDK v6, Orders v2 create/capture, full and partial refunds of completed captures, browser buyer approval, server-owned amount, session capability/origin checks, idempotency and stored completion receipt.
 - Cancelled, declined, pending and uncertain outcomes are never marked completed.
 - **Order state machine**: only `CREATING -> CREATED -> COMPLETED | PENDING_REVIEW -> COMPLETED`; anything else fails closed.
 - **Double-entry ledger**: every completed capture posts a balanced debit/credit group in the same transaction; an unbalanced group rolls back. A refund posts the balanced reversal group, so the ledger always tells the full money story.
@@ -33,9 +36,11 @@ This is a local prototype, not a production service, escrow product, legal agree
 
 Freelancers lose money twice: unclear scopes that drift into disputes, and awkward payment collection after the work. ScopePay explores one fix for that: an AI that turns a plain-English brief into a structured scope draft where every deliverable links to its exact source evidence, a required human review of that draft, and only then a separate, explicit PayPal payment step. The AI reads and organizes; it never sets the price and never approves a charge. The human stays the decision-maker end to end.
 
+PayPal's own Seller Protection does not cover Significantly Not As Described (SNAD) claims - items the buyer says are not what was ordered - which is exactly the dispute type a freelancer faces when a client says work is missing. ScopePay targets that gap with evidence, not adjudication: a scope both sides reviewed, a delivery account quoted verbatim against it, and the client's complaint cited just as strictly, so a make-good decision rests on visible claims instead of memory. It never decides who is right.
+
 ## Built with, and how each tool is used
 
-- **PayPal JavaScript SDK v6 + Orders v2 REST API (sandbox)**: browser buyer approval, server-side order create/capture with idempotency identifiers, receipt verification of status, amount and currency before anything is marked complete, full refunds of completed captures through the Payments v2 refunds endpoint with their own idempotency keys, and webhook signature verification.
+- **PayPal JavaScript SDK v6 + Orders v2 REST API (sandbox)**: browser buyer approval, server-side order create/capture with idempotency identifiers, receipt verification of status, amount and currency before anything is marked complete, full and partial refunds of completed captures through the Payments v2 refunds endpoint with their own idempotency keys, and webhook signature verification.
 - **Groq `openai/gpt-oss-20b`**: scope-draft extraction as JSON validated fail-closed against the contract server-side, with verbatim evidence spans quoted from the brief. One fixed model and endpoint, no tool use, no automatic retries, no paid fallback; refusals and timeouts fail closed.
 - **Spring Boot 3.3 (Java 21) + Spring Data JPA + Flyway**: loopback API, session capability checks, the review gate, order state machine, double-entry ledger and transactional outbox.
 - **Resilience4j**: retry with exponential backoff and a circuit breaker around the PayPal client.
@@ -73,13 +78,15 @@ Open **http://localhost:5173**. API is loopback-only on port 8090.
 
 Groq is disabled unless an API key and `GROQ_FREE_PLAN_CONFIRMED=true` are configured, with `AI_SYNTHETIC_ONLY=true`. Verify the account is Free, the fixed model is accessible and Zero Data Retention is enabled first. Do not add a card, buy credits or upgrade. Free limits are account-specific.
 
+No Groq key? Set `DEMO_FIXTURES=true` with no `GROQ_API_KEY` and the AI surfaces run as a deterministic replay of one bundled synthetic example, clearly labelled in the UI. It exists so a reviewer can walk the full flow without creating any account; it refuses any input other than the bundled example instead of faking a live answer.
+
 Never commit a filled `.env`, put secrets in screenshots or paste them into chat. No keys or test-account passwords are included. Only use synthetic briefs: the operator flag does not automatically detect private content.
 
 ## Verification, honestly scoped
 
 [Verification record](docs/VERIFICATION.md) distinguishes automated proof, scripted stand-ins and checks still pending on the owner's machine.
 
-- 143 JUnit tests pass (API, safety invariants, ledger, outbox, state machine, webhooks, AI adapter, delivery-comparison and exclusion verdicts, reconciler, resilience, rate limit, Kafka relay, observability, real-PostgreSQL schema guard); production client build passes.
+- 158 JUnit tests pass (API, safety invariants, ledger, outbox, state machine, webhooks, AI adapter, delivery-comparison and exclusion verdicts, client-complaint coverage, fixture replay, reconciler, resilience, rate limit, Kafka relay, observability, real-PostgreSQL schema guard); production client build passes.
 - Payment safety paths (idempotent create, fail-closed capture, amount check, state machine, ledger balance, webhook verify) are covered by tests with a stubbed PayPal.
 - Screenshots in this README were taken against a scripted PayPal stand-in (test-only runner); the identical server code runs against the real sandbox with the owner's credentials.
 - The earlier Node prototype's live sandbox flow (buyer approval, capture, independent seller receipt) was verified Oct 16, 2026; the Spring Boot rebuild re-verifies live on the owner's laptop before submission.
@@ -100,6 +107,7 @@ See [architecture and trust boundaries](docs/ARCHITECTURE.md). The application r
 - https://paypalaihackathon.devpost.com/resources
 - https://developer.paypal.com/docs/api/orders/v2/
 - https://developer.paypal.com/api/rest/webhooks/
+- https://www.paypal.com/us/legalhub/paypal/seller-protection
 - https://console.groq.com/docs/structured-outputs
 - https://console.groq.com/docs/your-data
 

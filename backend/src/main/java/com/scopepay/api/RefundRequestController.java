@@ -104,7 +104,8 @@ public class RefundRequestController {
     if (amount.compareTo(remaining) > 0) throw new ScopeException("REFUND_EXCEEDS_REMAINING", 409);
 
     String deliveryText = body.get("deliveryText").asText();
-    JsonNode comparison = comparator.compare(draft.getDeliverables(), deliveryText);
+    // The complaint (reason) is a cited input: the comparator quotes it verbatim, never trusts it.
+    JsonNode comparison = comparator.compare(draft.getDeliverables(), deliveryText, reason);
 
     RefundRequest row = new RefundRequest();
     row.setRefundRequestId("rr-" + UUID.randomUUID());

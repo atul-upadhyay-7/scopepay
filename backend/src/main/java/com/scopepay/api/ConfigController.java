@@ -1,6 +1,7 @@
 package com.scopepay.api;
 
 import com.scopepay.config.AppConfig;
+import com.scopepay.scope.FixtureScopeProvider;
 import com.scopepay.store.ClaimedOrder;
 import com.scopepay.store.ClaimedOrderRepository;
 import com.scopepay.store.SandboxOrder;
@@ -59,6 +60,10 @@ public class ConfigController {
     out.put("sku", AppConfig.SKU);
     out.put("environment", "sandbox");
     out.put("aiConfigured", scopeProvider.isPresent());
+    // "fixture" means deterministic replay of one bundled synthetic demo example - never a live
+    // model run; the UI labels every AI surface with this mode.
+    out.put("aiMode", scopeProvider.map(p -> p instanceof FixtureScopeProvider ? "fixture" : "live")
+        .orElse("unconfigured"));
     out.put("syntheticOnly", true);
     out.put("demoTools", config.demoTools);
     out.put("orderRecovery", config.orderRecovery);
