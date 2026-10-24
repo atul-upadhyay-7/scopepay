@@ -4,7 +4,9 @@ const ScopePayContext=createContext(null);
 export function ScopePayProvider({children}){
  const [config,setConfig]=useState(null),[brief,setBrief]=useState(EXAMPLE),[draft,setDraft]=useState(null),[review,setReview]=useState(null),[checked,setChecked]=useState(false),[busy,setBusy]=useState(false),[aiMessage,setAiMessage]=useState(''),[message,setMessage]=useState('Checking sandbox setup...'),[ready,setReady]=useState(false),[paid,setPaid]=useState(null);
  const [setupIssue,setSetupIssue]=useState(false),[checkoutClosed,setCheckoutClosed]=useState(false);
- const [session]=useState(()=>{let value=sessionStorage.getItem('scopepay-session');if(!value){value=crypto.randomUUID();sessionStorage.setItem('scopepay-session',value);}return value;});
+ // The demo identity persists across closed tabs and restarts (a lost tab used to orphan
+ // that session's receipts). An in-flight tab session is adopted once, then kept in localStorage.
+ const [session]=useState(()=>{let value=localStorage.getItem('scopepay-session')||sessionStorage.getItem('scopepay-session');if(!value)value=crypto.randomUUID();localStorage.setItem('scopepay-session',value);return value;});
  const payment=useRef(null),working=useRef(false),key=useRef(null);
  async function api(path,body,extra={}){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','x-demo-session':session,...extra},body:JSON.stringify(body)});const data=await r.json();if(!r.ok)throw new Error(data.error||'REQUEST_UNCONFIRMED');return data;}
  useEffect(()=>{let cancelled=false,script;(async()=>{
@@ -30,8 +32,10 @@ export function ScopePayProvider({children}){
  async function setFailureMode(mode){const r=await fetch('/api/demo/failure-mode',{method:'POST',headers:{'Content-Type':'application/json','x-demo-session':session},body:JSON.stringify({mode})});const data=await r.json();if(!r.ok)throw new Error(data.error||'FAILURE_MODE_UNAVAILABLE');return data.mode;}
  async function createRefundRequest(orderId,body){const r=await fetch(`/api/orders/${orderId}/refund-requests`,{method:'POST',headers:{'Content-Type':'application/json','x-demo-session':session},body:JSON.stringify(body)});const data=await r.json();return{status:r.status,data};}
  async function approveRefundRequest(id){const r=await fetch(`/api/refund-requests/${id}/approve`,{method:'POST',headers:{'Content-Type':'application/json','x-demo-session':session},body:JSON.stringify({acknowledge:true})});const data=await r.json();return{status:r.status,data};}
+ async function requestRecoveryCode(orderId){const r=await fetch(`/api/orders/${orderId}/recovery-code`,{method:'POST',headers:{'Content-Type':'application/json','x-demo-session':session},body:'{}'});const data=await r.json();return{status:r.status,data};}
+ async function recoverOrder(orderId,code){const r=await fetch(`/api/orders/${orderId}/recover`,{method:'POST',headers:{'Content-Type':'application/json','x-demo-session':session},body:JSON.stringify({code})});const data=await r.json();return{status:r.status,data};}
  async function loadReceipts(){const r=await fetch('/api/receipts',{headers:{'x-demo-session':session}});const data=await r.json();if(!r.ok)throw new Error(data.error||'RECEIPTS_UNAVAILABLE');return data;}
  const stepDone={brief:true,draft:!!draft,review:!!review,paid:!!paid};
- return <ScopePayContext.Provider value={{config,brief,setBrief:v=>{setBrief(v);setDraft(null);setChecked(false);},draft,review,checked,setChecked,busy,aiMessage,message,ready,setupIssue,checkoutClosed,paid,extract,confirmReview,checkout,loadReceipts,replayOrder,refundOrder,simulateWebhook,setFailureMode,createRefundRequest,approveRefundRequest,stepDone}}>{children}</ScopePayContext.Provider>;
+ return <ScopePayContext.Provider value={{config,brief,setBrief:v=>{setBrief(v);setDraft(null);setChecked(false);},draft,review,checked,setChecked,busy,aiMessage,message,ready,setupIssue,checkoutClosed,paid,extract,confirmReview,checkout,loadReceipts,requestRecoveryCode,recoverOrder,replayOrder,refundOrder,simulateWebhook,setFailureMode,createRefundRequest,approveRefundRequest,stepDone}}>{children}</ScopePayContext.Provider>;
 }
 export function useScopePay(){return useContext(ScopePayContext);}
