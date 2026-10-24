@@ -86,7 +86,7 @@ Never commit a filled `.env`, put secrets in screenshots or paste them into chat
 
 [Verification record](docs/VERIFICATION.md) distinguishes automated proof, scripted stand-ins and checks still pending on the owner's machine.
 
-- 158 JUnit tests pass (API, safety invariants, ledger, outbox, state machine, webhooks, AI adapter, delivery-comparison and exclusion verdicts, client-complaint coverage, fixture replay, reconciler, resilience, rate limit, Kafka relay, observability, real-PostgreSQL schema guard); production client build passes.
+- 161 JUnit tests pass (API, safety invariants, ledger, outbox, state machine, webhooks, AI adapter, delivery-comparison and exclusion verdicts, client-complaint coverage, fixture replay, reconciler, resilience, rate limit, Kafka relay, observability, real-PostgreSQL schema guard); production client build passes.
 - Payment safety paths (idempotent create, fail-closed capture, amount check, state machine, ledger balance, webhook verify) are covered by tests with a stubbed PayPal.
 - Screenshots in this README were taken against a scripted PayPal stand-in (test-only runner); the identical server code runs against the real sandbox with the owner's credentials.
 - The earlier Node prototype's live sandbox flow (buyer approval, capture, independent seller receipt) was verified Oct 16, 2026; the Spring Boot rebuild re-verifies live on the owner's laptop before submission.
