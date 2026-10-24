@@ -268,6 +268,33 @@ class DeliveryComparatorTest {
   }
 
   @Test
+  void promptListsExclusionsSeparatelyWithoutMarkerPrefix() {
+    // Live-provider regression: an inline "[scope exclusion]" marker in the prompt was copied by
+    // the real model into the deliverable field, and exact-match validation failed closed. The
+    // prompt must list exclusions in their own section with the raw description only.
+    var seen = new java.util.concurrent.atomic.AtomicReference<String>();
+    String account = "I delivered the contact form yesterday. No login was added, as agreed.";
+    DeliveryComparator c = new DeliveryComparator(Optional.of((i, b, s) -> {
+      seen.set(b);
+      var root = MAPPER.createObjectNode();
+      var items = root.putArray("comparisons");
+      items.addObject().put("deliverable", "Contact form").put("verdict", "CLAIMED_ADDRESSED")
+          .put("quote", "delivered the contact form").put("note", "claims done");
+      items.addObject().put("deliverable", "No visitor login functionality").put("verdict", "EXCLUSION_RESPECT_CLAIMED")
+          .put("quote", "No login was added, as agreed.").put("note", "claims exclusion respected");
+      root.put("overallNote", "ok");
+      return GenerateResult.ofData(root);
+    }));
+    c.compare(scopeWithExclusion(), account);
+    String body = seen.get();
+    assertTrue(body.contains("Scope exclusions"), "prompt names the exclusions section");
+    assertTrue(body.contains("- No visitor login functionality"), "exclusion listed raw");
+    assertFalse(body.contains("[scope exclusion]"), "no inline marker to parrot");
+    assertEquals(body.indexOf("No visitor login functionality"),
+        body.lastIndexOf("No visitor login functionality"), "exclusion listed exactly once");
+  }
+
+  @Test
   void exclusionPhrasingClassification() {
     assertTrue(DeliveryComparator.isExclusion("No visitor login functionality"));
     assertTrue(DeliveryComparator.isExclusion("Do not include analytics"));

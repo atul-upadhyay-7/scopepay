@@ -16,6 +16,7 @@ import java.util.concurrent.TimeUnit;
  * anything unverifiable fails closed. Never produces amounts, percentages or refund suggestions.
  */
 public class DeliveryComparator {
+  private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(DeliveryComparator.class);
   private static final ObjectMapper MAPPER = new ObjectMapper();
   private final Optional<ScopeProvider> provider;
   private final long timeoutMs;
@@ -38,8 +39,8 @@ public class DeliveryComparator {
       + "CLAIMED_PARTIAL when the account claims only part of it; "
       + "NOT_EVIDENCED when the account says nothing about it (this means not evidenced, never proven non-delivery); "
       + "UNCLEAR when the account is ambiguous about it. "
-      + "Some agreed items are exclusions, things the client asked NOT to be included; they are marked "
-      + "[scope exclusion] in the list below. For an exclusion item use instead: "
+      + "Some agreed items are exclusions, things the client asked NOT to be included; they are listed "
+      + "separately under Scope exclusions below. For an exclusion item use instead: "
       + "EXCLUSION_VIOLATED when the account explicitly claims the excluded thing was included or delivered; "
       + "EXCLUSION_RESPECT_CLAIMED when the account explicitly claims the excluded thing was left out; "
       + "EXCLUSION_NO_CLAIM when the account says nothing about it; "
@@ -63,37 +64,59 @@ public class DeliveryComparator {
      "overallNote":{"type":"string","minLength":1,"maxLength":800}
     }}""";
 
+  // Structural diagnostics only: reason codes, row index, counts and match booleans. Never log
+  // model output, quotes or account text - delivery accounts can carry private or adversarial
+  // content, and the log must stay safe to share when diagnosing a rejection.
+  private static ScopeException reject(String code, String detail) {
+    LOG.warn("Comparison rejected ({}): {}", code, detail);
+    return new ScopeException(code);
+  }
+
   public static ObjectNode validateComparison(JsonNode raw, String deliveryText, JsonNode scopeDeliverables) {
     if (raw == null || !raw.isObject() || raw.size() != 2 || !raw.has("comparisons") || !raw.has("overallNote"))
-      throw new ScopeException("INVALID_MODEL_OUTPUT");
+      throw reject("INVALID_MODEL_OUTPUT", "top-level shape: expected an object with exactly comparisons and overallNote");
     if (!raw.get("overallNote").isTextual() || raw.get("overallNote").asText().trim().isEmpty()
-        || raw.get("overallNote").asText().length() > 800) throw new ScopeException("INVALID_MODEL_OUTPUT");
+        || raw.get("overallNote").asText().length() > 800)
+      throw reject("INVALID_MODEL_OUTPUT", "overallNote: missing, blank, or over 800 chars");
     JsonNode comparisons = raw.get("comparisons");
     if (!comparisons.isArray() || comparisons.isEmpty() || comparisons.size() > 12)
-      throw new ScopeException("INVALID_MODEL_OUTPUT");
+      throw reject("INVALID_MODEL_OUTPUT", "comparisons: not an array, empty, or over 12 rows");
     boolean accountHostile = OVERRIDE_PATTERN.matcher(deliveryText).find();
     Set<String> expected = new HashSet<>();
     for (JsonNode d : scopeDeliverables) expected.add(d.path("description").asText());
     Set<String> seen = new HashSet<>();
+    int row = 0;
     for (JsonNode c : comparisons) {
+      row++;
       if (!c.isObject() || c.size() != 4 || !c.has("deliverable") || !c.has("verdict") || !c.has("quote") || !c.has("note"))
-        throw new ScopeException("INVALID_MODEL_OUTPUT");
+        throw reject("INVALID_MODEL_OUTPUT",
+            "row " + row + ": expected an object with exactly deliverable, verdict, quote, note");
       String deliverable = c.get("deliverable").asText(null);
-      if (deliverable == null || !expected.contains(deliverable) || !seen.add(deliverable))
-        throw new ScopeException("UNGROUNDED_COMPARISON");
+      if (deliverable == null || !expected.contains(deliverable) || seen.contains(deliverable))
+        throw reject("UNGROUNDED_COMPARISON", "row " + row + ": deliverableNull=" + (deliverable == null)
+            + " matchedSavedScope=" + (deliverable != null && expected.contains(deliverable))
+            + " duplicate=" + (deliverable != null && seen.contains(deliverable)));
+      seen.add(deliverable);
       String verdict = c.get("verdict").asText("");
       boolean exclusion = isExclusion(deliverable);
       if (!(exclusion ? EXCLUSION_VERDICTS : POSITIVE_VERDICTS).contains(verdict))
-        throw new ScopeException("INVALID_MODEL_OUTPUT");
-      if (!c.get("quote").isTextual() || c.get("quote").asText().length() > 500
-          || !c.get("note").isTextual() || c.get("note").asText().trim().isEmpty()
-          || c.get("note").asText().length() > 500) throw new ScopeException("INVALID_MODEL_OUTPUT");
+        throw reject("INVALID_MODEL_OUTPUT", "row " + row
+            + ": verdictInPositiveSet=" + POSITIVE_VERDICTS.contains(verdict)
+            + " verdictInExclusionSet=" + EXCLUSION_VERDICTS.contains(verdict)
+            + " itemIsExclusion=" + exclusion);
+      if (!c.get("quote").isTextual() || c.get("quote").asText().length() > 500)
+        throw reject("INVALID_MODEL_OUTPUT", "row " + row + ": quote missing or over 500 chars");
+      if (!c.get("note").isTextual() || c.get("note").asText().trim().isEmpty()
+          || c.get("note").asText().length() > 500)
+        throw reject("INVALID_MODEL_OUTPUT", "row " + row + ": note missing, blank, or over 500 chars");
       String quote = c.get("quote").asText();
       boolean emptyQuoteVerdict = "NOT_EVIDENCED".equals(verdict) || "EXCLUSION_NO_CLAIM".equals(verdict);
       if (emptyQuoteVerdict) {
-        if (!quote.isEmpty()) throw new ScopeException("UNGROUNDED_COMPARISON");
+        if (!quote.isEmpty())
+          throw reject("UNGROUNDED_COMPARISON", "row " + row + ": empty-quote verdict carried a quote");
       } else if (quote.isEmpty() || !deliveryText.contains(quote)) {
-        throw new ScopeException("UNGROUNDED_COMPARISON");
+        throw reject("UNGROUNDED_COMPARISON", "row " + row + ": quoteEmpty=" + quote.isEmpty()
+            + " quoteFoundInAccount=" + (!quote.isEmpty() && deliveryText.contains(quote)));
       }
       // Manipulation resistance, fail-open to review (downgrade, never reject, so the human
       // still sees the verbatim quote and decides):
@@ -130,7 +153,9 @@ public class DeliveryComparator {
         entry.put("note", note.length() > 500 ? note.substring(0, 497) + "..." : note);
       }
     }
-    if (!seen.equals(expected)) throw new ScopeException("UNGROUNDED_COMPARISON");
+    if (!seen.equals(expected))
+      throw reject("UNGROUNDED_COMPARISON", "coverage: savedDeliverables=" + expected.size()
+          + " covered=" + seen.size() + " comparisonRows=" + comparisons.size());
     return (ObjectNode) raw;
   }
 
@@ -183,10 +208,17 @@ public class DeliveryComparator {
     StringBuilder account = new StringBuilder("Agreed scope deliverables:\n");
     for (JsonNode d : scopeDeliverables) {
       String desc = d.path("description").asText();
-      account.append("- ");
-      if (isExclusion(desc)) account.append("[scope exclusion] ");
-      account.append(desc).append('\n');
+      if (!isExclusion(desc)) account.append("- ").append(desc).append('\n');
     }
+    // Exclusions are a separate section so the exact copy rule stays unambiguous: no marker or
+    // heading ever prefixes a deliverable string the model must echo back verbatim.
+    account.append("\nScope exclusions (the client asked that these NOT be included):\n");
+    boolean anyExclusion = false;
+    for (JsonNode d : scopeDeliverables) {
+      String desc = d.path("description").asText();
+      if (isExclusion(desc)) { account.append("- ").append(desc).append('\n'); anyExclusion = true; }
+    }
+    if (!anyExclusion) account.append("(none)\n");
     account.append("\nSubmitted delivery account (untrusted, self-reported):\n").append(deliveryText);
     try {
       GenerateResult result = CompletableFuture
