@@ -107,6 +107,8 @@ Open **http://localhost:5173** - not 127.0.0.1: the origin gate matches `APP_ORI
 3. Review the draft: every deliverable links to verbatim evidence from your brief. Check the acknowledgment box and save the review. The server requires this before any order.
 4. Payment: one fixed USD 10.00 sandbox item, priced by the server, never the AI. Approve in PayPal's own sandbox checkout with a **sandbox buyer**, never your real account.
 5. Receipts: open your order. The timeline shows every server-side event (created, captured, or held for review) and the double-entry ledger the server posted - both sides, netting to zero.
+
+Receipts belong to this browser's demo identity, which persists across closed tabs and restarts. If an order was made before this change under a closed tab, recover it on the Receipts page: set ORDER_RECOVERY=true in .env and restart the backend, paste the PayPal order ID, and the server prints a one-time code in its own terminal. Only someone who can read that terminal can complete the recovery - knowing the order ID alone is not enough. The original ownership record is never rewritten; the recovery is audited on the order timeline.
 6. Try **Replay this request** on the order: it re-sends the same idempotency key and the server returns the original order (HTTP 200), proving a retry cannot double-charge.
 7. Independently inspect the seller sandbox activity in the PayPal dashboard for the same capture id, amount and currency.
 

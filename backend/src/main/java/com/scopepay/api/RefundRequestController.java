@@ -5,6 +5,7 @@ import com.scopepay.config.AppConfig;
 import com.scopepay.paypal.PayPalClient;
 import com.scopepay.scope.DeliveryComparator;
 import com.scopepay.scope.ScopeException;
+import com.scopepay.store.ClaimedOrderRepository;
 import com.scopepay.store.LedgerService;
 import com.scopepay.store.OutboxService;
 import com.scopepay.store.RefundRequest;
@@ -41,6 +42,7 @@ public class RefundRequestController {
   private static final Pattern AMOUNT_PATTERN = Pattern.compile("^\\d{1,6}(\\.\\d{1,2})?$");
 
   private final SandboxOrderRepository orders;
+  private final ClaimedOrderRepository claims;
   private final ScopeDraftRepository drafts;
   private final RefundRequestRepository refundRequests;
   private final DeliveryComparator comparator;
@@ -51,10 +53,11 @@ public class RefundRequestController {
 
   public RefundRequestController(SandboxOrderRepository orders, ScopeDraftRepository drafts,
       RefundRequestRepository refundRequests, DeliveryComparator comparator, PayPalClient paypal,
-      LedgerService ledger, OutboxService outbox, com.scopepay.store.AttemptMarker attemptMarker) {
+      LedgerService ledger, OutboxService outbox, com.scopepay.store.AttemptMarker attemptMarker,
+      ClaimedOrderRepository claims) {
     this.orders = orders; this.drafts = drafts; this.refundRequests = refundRequests;
     this.comparator = comparator; this.paypal = paypal; this.ledger = ledger; this.outbox = outbox;
-    this.attemptMarker = attemptMarker;
+    this.attemptMarker = attemptMarker; this.claims = claims;
   }
 
   private BigDecimal committed(String orderRequestId, String excludeRequestId) {
@@ -88,7 +91,8 @@ public class RefundRequestController {
     if (reason.trim().isEmpty() || reason.length() > 500) throw new ScopeException("INVALID_REFUND_REQUEST", 400);
     String owner = SessionGate.ownerHash(request);
     SandboxOrder order = orders.findByOrderId(orderId)
-        .filter(o -> owner.equals(o.getOwnerHash()))
+        .filter(o -> owner.equals(o.getOwnerHash())
+            || claims.existsByOrderRequestIdAndClaimantHash(o.getRequestId(), owner))
         .orElseThrow(() -> new ScopeException("ORDER_NOT_FOUND", 404));
     if (!"COMPLETED".equals(order.getState()))
       throw new ScopeException("ORDER_NOT_COMPLETED", 409);

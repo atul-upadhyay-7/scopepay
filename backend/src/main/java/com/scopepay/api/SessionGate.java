@@ -20,7 +20,10 @@ public class SessionGate extends OncePerRequestFilter {
   public SessionGate(AppConfig config) { this.config = config; }
 
   public static String ownerHash(HttpServletRequest request) {
-    String session = request.getHeader("x-demo-session");
+    return ownerHash(request.getHeader("x-demo-session"));
+  }
+
+  public static String ownerHash(String session) {
     try {
       MessageDigest digest = MessageDigest.getInstance("SHA-256");
       byte[] hash = digest.digest(session.getBytes(StandardCharsets.UTF_8));

@@ -33,6 +33,12 @@ public class AppConfig {
   /** Demo-only tools (webhook simulator, failure injection). Never enabled in production properties. */
   @Value("${DEMO_TOOLS:false}")
   public boolean demoTools;
+  /**
+   * Owner-controlled recovery of orders orphaned by a closed tab session (local demo only).
+   * Off by default and fails closed with 404; never enabled in production properties.
+   */
+  @Value("${ORDER_RECOVERY:false}")
+  public boolean orderRecovery;
 
   @Bean
   public PayPalClient payPalClient() {

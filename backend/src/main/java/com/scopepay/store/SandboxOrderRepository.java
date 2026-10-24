@@ -24,4 +24,5 @@ public interface SandboxOrderRepository extends JpaRepository<SandboxOrder, Stri
   Optional<SandboxOrder> findByRefundId(String refundId);
   List<SandboxOrder> findByStateAndOrderIdIsNotNull(String state);
   List<SandboxOrder> findTop20ByOwnerHashOrderByCreatedAtDesc(String ownerHash);
+  List<SandboxOrder> findByRequestIdIn(java.util.Collection<String> requestIds);
 }

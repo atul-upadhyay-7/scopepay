@@ -9,14 +9,14 @@ import {Table,TableBody,TableCell,TableRow} from '@/components/ui/table';
 import {Textarea} from '@/components/ui/textarea';
 import ScopeGrid from '@/components/ScopeGrid.jsx';
 import {Tabs,TabsContent,TabsList,TabsTrigger} from '@/components/ui/tabs';
-const EVENT_LABELS={ORDER_CREATED:'Sandbox order created',ORDER_PENDING_REVIEW:'Capture unclear - held for review, never shown as paid',ORDER_COMPLETED:'Payment captured and verified server-side',WEBHOOK_CONFIRMED:'PayPal webhook verified and recorded',WEBHOOK_REJECTED:'A webhook failed verification and was ignored',WEBHOOK_IGNORED:'A verified webhook did not match any order',ORDER_REFUNDED:'Payment refunded in the sandbox, ledger reversed',ORDER_REFUND_FAILED:'Refund answer was unclear - the order stays completed and safe'};
+const EVENT_LABELS={ORDER_CREATED:'Sandbox order created',ORDER_PENDING_REVIEW:'Capture unclear - held for review, never shown as paid',ORDER_COMPLETED:'Payment captured and verified server-side',WEBHOOK_CONFIRMED:'PayPal webhook verified and recorded',WEBHOOK_REJECTED:'A webhook failed verification and was ignored',WEBHOOK_IGNORED:'A verified webhook did not match any order',ORDER_REFUNDED:'Payment refunded in the sandbox, ledger reversed',ORDER_REFUND_FAILED:'Refund answer was unclear - the order stays completed and safe',ORDER_RECOVERED:'Order recovered into a later session with a one-time console code'};
 const ACCOUNT_LABELS={paypal_sandbox_clearing:'PayPal sandbox clearing',demo_revenue:'Demo revenue'};
 const VERDICT_LABELS={CLAIMED_ADDRESSED:['ok','Claimed addressed'],CLAIMED_PARTIAL:['warn','Claimed partial'],NOT_EVIDENCED:['default','Not evidenced'],UNCLEAR:['warn','Unclear']};
 const RR_LABELS={DRAFT:['default','Awaiting approval'],COMPLETED:['ok','Refunded'],UNCLEAR:['warn','Needs check'],FAILED:['default','Failed']};
 const LABELS={DRAFT_REQUIRES_REVIEW:['default','Draft'],REVIEWED_FOR_SANDBOX:['ok','Reviewed'],CREATING:['default','Creating'],CREATED:['default','Order created'],PENDING_REVIEW:['warn','Needs check'],COMPLETED:['ok','Completed'],REFUNDED:['default','Refunded']};
 function StateBadge({state}){const [variant,label]=LABELS[state]||['default',state];return <Badge variant={variant}>{label}</Badge>;}
 export default function Receipts(){
- const {loadReceipts,replayOrder,refundOrder,simulateWebhook,createRefundRequest,approveRefundRequest,config}=useScopePay();
+ const {loadReceipts,requestRecoveryCode,recoverOrder,replayOrder,refundOrder,simulateWebhook,createRefundRequest,approveRefundRequest,config}=useScopePay();
  const [data,setData]=useState(null),[error,setError]=useState('');
  const [selected,setSelected]=useState(null);
  const [selectedOrder,setSelectedOrder]=useState(null);
@@ -29,6 +29,7 @@ export default function Receipts(){
  const [mgText,setMgText]=useState(''),[mgAmount,setMgAmount]=useState(''),[mgReason,setMgReason]=useState('');
  const [mgBusy,setMgBusy]=useState(false),[mgError,setMgError]=useState('');
  const [mgDraft,setMgDraft]=useState(null),[mgResult,setMgResult]=useState(null);
+ const [tab,setTab]=useState('drafts'),[recId,setRecId]=useState(''),[recCode,setRecCode]=useState(''),[recStep,setRecStep]=useState('id'),[recBusy,setRecBusy]=useState(false),[recMsg,setRecMsg]=useState(null);
  async function mgCreate(){if(!selectedOrder||mgBusy)return;setMgBusy(true);setMgError('');setMgResult(null);
   try{const r=await createRefundRequest(selectedOrder.orderId,{amount:mgAmount.trim(),reason:mgReason.trim(),deliveryText:mgText});
    if(r.status===201&&r.data.refundRequestId){setMgDraft(r.data);const fresh=await loadReceipts();setData(fresh);}
@@ -45,6 +46,22 @@ export default function Receipts(){
   }catch(e){setMgResult({ok:false,text:`Approval failed: ${e.message}. Nothing was treated as refunded.`});}
   finally{setMgBusy(false);}}
  function openOrder(o){setSelectedOrder(o);setMgDraft(null);setMgError('');setMgResult(null);setMgText('');setMgAmount('');setMgReason('');}
+ async function printCode(){if(recBusy||recId.trim().length<5)return;setRecBusy(true);setRecMsg(null);
+  try{const r=await requestRecoveryCode(recId.trim());
+   if(r.status===200){setRecStep('code');setRecMsg({ok:true,text:'A one-time code was printed in the backend terminal window (valid 5 minutes, one use). Enter it below.'});}
+   else if(r.status===404)setRecMsg({ok:false,text:'No order with that ID exists in this app\u2019s records on this machine. Nothing changed.'});
+   else if(r.status===400)setRecMsg({ok:false,text:'That does not look like a PayPal order ID (capital letters and digits only).'});
+   else setRecMsg({ok:false,text:`Could not print a code (HTTP ${r.status}): ${r.data.error||'unknown'}. Nothing changed.`});
+  }catch(e){setRecMsg({ok:false,text:`Could not print a code: ${e.message}. Nothing changed.`});}
+  finally{setRecBusy(false);}}
+ async function recover(){if(recBusy||recCode.trim().length<8)return;setRecBusy(true);setRecMsg(null);
+  try{const id=recId.trim();const r=await recoverOrder(id,recCode.trim());
+   if(r.status===200&&r.data.recovered){const fresh=await loadReceipts();setData(fresh);setTab('orders');const found=fresh.orders.find(x=>x.orderId===id);if(found)openOrder(found);setRecMsg({ok:true,text:'Order recovered into this session\u2019s record. It stays here across closed tabs from now on.'});setRecId('');setRecCode('');setRecStep('id');}
+   else if(r.status===403)setRecMsg({ok:false,text:'The code did not match, expired, or was already used. Nothing changed - print a fresh code and try again.'});
+   else if(r.status===404)setRecMsg({ok:false,text:'No order with that ID exists in this app\u2019s records on this machine. Nothing changed.'});
+   else setRecMsg({ok:false,text:`Recovery failed (HTTP ${r.status}): ${r.data.error||'unknown'}. Nothing changed.`});
+  }catch(e){setRecMsg({ok:false,text:`Recovery failed: ${e.message}. Nothing changed.`});}
+  finally{setRecBusy(false);}}
  async function simulate(){if(!selectedOrder||simulating)return;setSimulating(true);setWebhookResult(null);
   try{const r=await simulateWebhook(selectedOrder.requestId);
    const fresh=await loadReceipts();const updated=fresh.orders.find(x=>x.requestId===selectedOrder.requestId);if(updated)setSelectedOrder(updated);
@@ -78,7 +95,20 @@ export default function Receipts(){
  return <>
   <Reveal><Eyebrow>Your session's record</Eyebrow>
   <h2 className="mt-3 font-serif text-2xl font-semibold tracking-tight">Receipts</h2></Reveal>
-  <Reveal delay={100}><Tabs defaultValue="drafts" className="mt-5">
+  {config?.orderRecovery&&<Reveal delay={50}><Card className="mt-5"><CardContent className="pt-4">
+   <span className="text-xs text-muted-foreground">Recover an earlier order</span>
+   <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Receipts now survive closed tabs and restarts in this browser. Orders made before this fix belonged to a closed tab. Paste the PayPal order ID (capital letters and digits) and the server prints a one-time code in the backend terminal - only someone who can read that terminal can complete the recovery.</p>
+   <div className="mt-2 flex flex-wrap gap-2">
+    <input className="min-w-0 flex-1 rounded-md border border-input bg-background px-2.5 py-1.5 font-mono text-xs" placeholder="PayPal order ID" maxLength={40} value={recId} onChange={e=>setRecId(e.target.value)}/>
+    <Button variant="outline" size="sm" disabled={recBusy||recId.trim().length<5} onClick={printCode}>{recBusy&&recStep==='id'?'Printing...':'Print recovery code'}</Button>
+   </div>
+   {recStep==='code'&&<div className="mt-2 flex flex-wrap gap-2">
+    <input className="w-32 rounded-md border border-input bg-background px-2.5 py-1.5 font-mono text-xs tracking-widest" placeholder="XXXX-XXXX" maxLength={9} value={recCode} onChange={e=>setRecCode(e.target.value)}/>
+    <Button variant="outline" size="sm" disabled={recBusy||recCode.trim().length<8} onClick={recover}>{recBusy?'Recovering...':'Recover order'}</Button>
+   </div>}
+   {recMsg&&<p className={`mt-2 rounded-md border px-3 py-2 text-xs ${recMsg.ok?'border-primary/40 bg-accent text-accent-foreground':'border-destructive/40 bg-destructive/10 text-foreground'}`}>{recMsg.text}</p>}
+  </CardContent></Card></Reveal>}
+  <Reveal delay={100}><Tabs value={tab} onValueChange={setTab} className="mt-5">
    <TabsList><TabsTrigger value="drafts">Drafts and reviews</TabsTrigger><TabsTrigger value="orders">Orders and captures</TabsTrigger></TabsList>
    <TabsContent value="drafts">
     {data.drafts.length===0?<Card><CardContent className="pt-6 text-sm text-muted-foreground">No drafts in this session yet.</CardContent></Card>:
@@ -107,7 +137,7 @@ export default function Receipts(){
    {selected&&<DialogContent className="max-h-[85vh] overflow-y-auto">
     <DialogHeader>
      <DialogTitle>Scope {selected.scopeId.slice(0,8)}...</DialogTitle>
-     <DialogDescription>Saved in this browser session only.</DialogDescription>
+     <DialogDescription>Saved under this browser's demo identity.</DialogDescription>
     </DialogHeader>
     <div className="space-y-3 text-sm">
      <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">State</span><StateBadge state={selected.state}/></div>

@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.scopepay.config.AppConfig;
 import com.scopepay.paypal.PayPalClient;
 import com.scopepay.scope.ScopeException;
+import com.scopepay.store.ClaimedOrder;
+import com.scopepay.store.ClaimedOrderRepository;
 import com.scopepay.store.LedgerService;
 import com.scopepay.store.OrderStates;
 import com.scopepay.store.OutboxService;
@@ -43,15 +45,18 @@ public class OrderController {
   private final AppConfig config;
   private final LedgerService ledger;
   private final RefundRequestRepository refundRequests;
+  private final ClaimedOrderRepository claims;
+  private final OrderRecoveryService recovery;
   private final OutboxService outbox;
   private final MeterRegistry metrics;
 
   public OrderController(PayPalClient paypal, SandboxOrderRepository orders, ScopeDraftRepository drafts,
       AppConfig config, LedgerService ledger, OutboxService outbox, MeterRegistry metrics,
-      RefundRequestRepository refundRequests) {
+      RefundRequestRepository refundRequests, ClaimedOrderRepository claims,
+      OrderRecoveryService recovery) {
     this.paypal = paypal; this.orders = orders; this.drafts = drafts; this.config = config;
     this.ledger = ledger; this.outbox = outbox; this.metrics = metrics;
-    this.refundRequests = refundRequests;
+    this.refundRequests = refundRequests; this.claims = claims; this.recovery = recovery;
   }
 
   private static void transition(SandboxOrder order, String to) {
@@ -103,6 +108,67 @@ public class OrderController {
     outbox.record("order", requestId, "ORDER_CREATED",
         Map.of("orderId", orderId, "sku", AppConfig.SKU, "amount", AppConfig.PRICE_VALUE, "currency", AppConfig.CURRENCY));
     return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("orderId", orderId));
+  }
+
+  /**
+   * Owner-controlled order recovery (local demo only; 404 unless ORDER_RECOVERY=true).
+   * Knowing a PayPal order ID is NOT enough: step one only prints a one-time code to the
+   * server's own console, which nobody but the person running this machine can read.
+   */
+  @PostMapping("/api/orders/{orderId}/recovery-code")
+  public ResponseEntity<Map<String, Object>> issueRecoveryCode(@PathVariable String orderId, HttpServletRequest request) {
+    if (!config.orderRecovery) throw new ScopeException("NOT_FOUND", 404);
+    if (!ORDER_PATTERN.matcher(orderId).matches()) throw new ScopeException("INVALID_ORDER", 400);
+    String owner = SessionGate.ownerHash(request);
+    SandboxOrder order = orders.findByOrderId(orderId)
+        .orElseThrow(() -> new ScopeException("ORDER_NOT_FOUND", 404));
+    String code = recovery.issue(order.getRequestId(), owner);
+    System.out.println("\n============================================================\n"
+        + "ScopePay order recovery (local demo)\n"
+        + "Order: " + orderId + "\n"
+        + "Code:  " + code + "  (valid 5 minutes, one use)\n"
+        + "Enter this code on the Receipts page to attach this order to the\n"
+        + "current browser session. If you did not request it, ignore it -\n"
+        + "the code expires on its own.\n"
+        + "============================================================");
+    Map<String, Object> out = new LinkedHashMap<>();
+    out.put("status", "RECOVERY_CODE_ON_SERVER_CONSOLE");
+    out.put("expiresInSeconds", 300);
+    return ResponseEntity.ok(out);
+  }
+
+  /**
+   * Step two: the browser presents the console code. Ownership is never rewritten - recovery
+   * is an additive, audited association (ORDER_RECOVERED on the order timeline), and a
+   * session that only knows the order ID is denied.
+   */
+  @PostMapping("/api/orders/{orderId}/recover")
+  public ResponseEntity<Map<String, Object>> recover(@PathVariable String orderId,
+      @RequestBody(required = false) JsonNode body, HttpServletRequest request) {
+    if (!config.orderRecovery) throw new ScopeException("NOT_FOUND", 404);
+    if (!ORDER_PATTERN.matcher(orderId).matches()) throw new ScopeException("INVALID_ORDER", 400);
+    if (body == null || !body.isObject() || body.size() != 1
+        || !body.has("code") || !body.get("code").isTextual())
+      throw new ScopeException("RECOVERY_CODE_REQUIRED", 400);
+    String owner = SessionGate.ownerHash(request);
+    SandboxOrder order = orders.findByOrderId(orderId)
+        .orElseThrow(() -> new ScopeException("ORDER_NOT_FOUND", 404));
+    if (!owner.equals(order.getOwnerHash())
+        && !claims.existsByOrderRequestIdAndClaimantHash(order.getRequestId(), owner)) {
+      if (!recovery.redeem(body.get("code").asText(), order.getRequestId(), owner))
+        throw new ScopeException("ORDER_RECOVERY_DENIED", 403);
+      try {
+        claims.saveAndFlush(new ClaimedOrder(order.getRequestId(), owner));
+      } catch (org.springframework.dao.DataIntegrityViolationException duplicate) {
+        // A concurrent recovery already attached the order; the outcome is the same.
+      }
+      outbox.record("order", order.getRequestId(), "ORDER_RECOVERED", Map.of("orderId", orderId));
+    }
+    Map<String, Object> out = new LinkedHashMap<>();
+    out.put("orderId", orderId);
+    out.put("state", order.getState());
+    out.put("recovered", true);
+    return ResponseEntity.ok(out);
   }
 
   @PostMapping("/api/orders/{orderId}/capture")
@@ -160,7 +226,8 @@ public class OrderController {
     // Locked for the whole check-then-refund: a make-good request created or approved
     // concurrently must not slip past the USE_MAKE_GOOD_REFUND guard below.
     SandboxOrder record = orders.findWithLockByOrderId(orderId)
-        .filter(o -> owner.equals(o.getOwnerHash()))
+        .filter(o -> owner.equals(o.getOwnerHash())
+            || claims.existsByOrderRequestIdAndClaimantHash(o.getRequestId(), owner))
         .orElseThrow(() -> new ScopeException("ORDER_NOT_FOUND", 404));
     if (OrderStates.REFUNDED.equals(record.getState())) {
       Map<String, Object> out = new LinkedHashMap<>();

@@ -1,6 +1,8 @@
 package com.scopepay.api;
 
 import com.scopepay.config.AppConfig;
+import com.scopepay.store.ClaimedOrder;
+import com.scopepay.store.ClaimedOrderRepository;
 import com.scopepay.store.SandboxOrder;
 import com.scopepay.store.SandboxOrderRepository;
 import com.scopepay.store.ScopeDraft;
@@ -11,6 +13,7 @@ import com.scopepay.store.OutboxEvent;
 import com.scopepay.store.OutboxEventRepository;
 import com.scopepay.store.RefundRequestRepository;
 import com.scopepay.store.ScopeDraftRepository;
+import java.util.ArrayList;
 import java.util.Optional;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.LinkedHashMap;
@@ -26,14 +29,16 @@ public class ConfigController {
   private final ScopeDraftRepository drafts;
   private final SandboxOrderRepository orders;
   private final RefundRequestRepository refundRequests;
+  private final ClaimedOrderRepository claims;
   private final OutboxEventRepository outboxEvents;
   private final LedgerEntryRepository ledgerEntries;
 
   public ConfigController(AppConfig config, Optional<ScopeProvider> scopeProvider, ScopeDraftRepository drafts,
-      SandboxOrderRepository orders, RefundRequestRepository refundRequests, OutboxEventRepository outboxEvents, LedgerEntryRepository ledgerEntries) {
+      SandboxOrderRepository orders, RefundRequestRepository refundRequests, OutboxEventRepository outboxEvents,
+      LedgerEntryRepository ledgerEntries, ClaimedOrderRepository claims) {
     this.config = config; this.scopeProvider = scopeProvider; this.drafts = drafts; this.orders = orders;
     this.outboxEvents = outboxEvents; this.ledgerEntries = ledgerEntries;
-    this.refundRequests = refundRequests;
+    this.refundRequests = refundRequests; this.claims = claims;
   }
 
   @GetMapping("/api/health")
@@ -56,6 +61,7 @@ public class ConfigController {
     out.put("aiConfigured", scopeProvider.isPresent());
     out.put("syntheticOnly", true);
     out.put("demoTools", config.demoTools);
+    out.put("orderRecovery", config.orderRecovery);
     return out;
   }
 
@@ -75,7 +81,21 @@ public class ConfigController {
           m.put("reviewedAt", d.getReviewedAt());
           return m;
         }).toList();
-    List<Map<String, Object>> orderList = orders.findTop20ByOwnerHashOrderByCreatedAtDesc(owner).stream()
+    // Visible orders: this session's own, plus any earlier orders it claimed back by PayPal
+    // order ID (tab sessions used to be lost on close; the claim is the recovery path).
+    List<SandboxOrder> visible = new ArrayList<>(orders.findTop20ByOwnerHashOrderByCreatedAtDesc(owner));
+    List<String> claimedIds = claims.findByClaimantHash(owner).stream()
+        .map(ClaimedOrder::getOrderRequestId).toList();
+    if (!claimedIds.isEmpty()) {
+      List<String> own = visible.stream().map(SandboxOrder::getRequestId).toList();
+      List<String> missing = claimedIds.stream().filter(id -> !own.contains(id)).toList();
+      if (!missing.isEmpty()) {
+        visible.addAll(orders.findByRequestIdIn(missing));
+        visible.sort((a, b) -> b.getCreatedAt().compareTo(a.getCreatedAt()));
+        if (visible.size() > 20) visible = visible.subList(0, 20);
+      }
+    }
+    List<Map<String, Object>> orderList = visible.stream()
         .map(o -> {
           Map<String, Object> m = new LinkedHashMap<String, Object>();
           m.put("requestId", o.getRequestId());
