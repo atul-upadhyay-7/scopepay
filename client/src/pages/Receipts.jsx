@@ -7,6 +7,7 @@ import {Card,CardContent,CardDescription,CardHeader,CardTitle} from '@/component
 import {Dialog,DialogContent,DialogDescription,DialogHeader,DialogTitle} from '@/components/ui/dialog';
 import {Table,TableBody,TableCell,TableRow} from '@/components/ui/table';
 import {Textarea} from '@/components/ui/textarea';
+import {Label} from '@/components/ui/label';
 import ScopeGrid from '@/components/ScopeGrid.jsx';
 import {Tabs,TabsContent,TabsList,TabsTrigger} from '@/components/ui/tabs';
 const EVENT_LABELS={ORDER_CREATED:'Sandbox order created',ORDER_PENDING_REVIEW:'Capture unclear - held for review, never shown as paid',ORDER_COMPLETED:'Payment captured and verified server-side',WEBHOOK_CONFIRMED:'PayPal webhook verified and recorded',WEBHOOK_REJECTED:'A webhook failed verification and was ignored',WEBHOOK_IGNORED:'A verified webhook did not match any order',ORDER_REFUNDED:'Payment refunded in the sandbox, ledger reversed',ORDER_REFUND_FAILED:'Refund answer was unclear - the order stays completed and safe',ORDER_RECOVERED:'Order recovered into a later session with a one-time console code'};
@@ -30,6 +31,7 @@ export default function Receipts(){
  const [mgBusy,setMgBusy]=useState(false),[mgError,setMgError]=useState('');
  const [mgDraft,setMgDraft]=useState(null),[mgResult,setMgResult]=useState(null);
  const [tab,setTab]=useState('drafts'),[recId,setRecId]=useState(''),[recCode,setRecCode]=useState(''),[recStep,setRecStep]=useState('id'),[recBusy,setRecBusy]=useState(false),[recMsg,setRecMsg]=useState(null);
+ const mgMissing=[mgText.trim().length<20&&'delivery account (at least 20 characters)',!mgReason.trim()&&'client complaint',!mgAmount.trim()&&'refund amount'].filter(Boolean);
  async function mgCreate(){if(!selectedOrder||mgBusy)return;setMgBusy(true);setMgError('');setMgResult(null);
   try{const r=await createRefundRequest(selectedOrder.orderId,{amount:mgAmount.trim(),reason:mgReason.trim(),deliveryText:mgText});
    if(r.status===201&&r.data.refundRequestId){setMgDraft(r.data);const fresh=await loadReceipts();setData(fresh);}
@@ -222,14 +224,24 @@ export default function Receipts(){
         <span className="tabular-nums">{r.amount} {r.currency}</span><Badge variant={v}>{label}</Badge>
         <span className="font-mono text-muted-foreground">{r.paypalRefundId||'-'}</span></li>;})}
       </ul>}
-      {!mgDraft&&<>
-       <Textarea className="mt-2" maxLength={6000} placeholder="What was delivered, in your own words (self-reported account)" value={mgText} onChange={e=>setMgText(e.target.value)}/>
-       <div className="mt-2 flex flex-wrap gap-2">
-        <input className="w-24 rounded-md border border-input bg-background px-2.5 py-1.5 font-mono text-xs tabular-nums" placeholder="0.00" value={mgAmount} onChange={e=>setMgAmount(e.target.value)}/>
-        <input className="min-w-0 flex-1 rounded-md border border-input bg-background px-2.5 py-1.5 text-xs" placeholder="Reason (e.g. client reports missing work)" maxLength={500} value={mgReason} onChange={e=>setMgReason(e.target.value)}/>
-        <Button variant="outline" size="sm" disabled={mgBusy||mgText.trim().length<20||!mgAmount.trim()||!mgReason.trim()} onClick={mgCreate}>{mgBusy?'Comparing...':'Compare and prepare refund'}</Button>
+      {!mgDraft&&<div className="mt-2 space-y-3">
+       <div>
+        <Label htmlFor="mg-text" className="block">Delivery account <span className="font-normal text-muted-foreground">(what the freelancer says was delivered - self-reported, {mgText.length}/6000 characters)</span></Label>
+        <Textarea id="mg-text" className="mt-1.5" maxLength={6000} placeholder="Paste the delivery account in your own words" value={mgText} onChange={e=>setMgText(e.target.value)}/>
        </div>
-      </>}
+       <div>
+        <Label htmlFor="mg-reason" className="block">Client complaint <span className="font-normal text-muted-foreground">(what the client says is missing - quoted to the AI as a claim, never trusted, {mgReason.length}/500 characters)</span></Label>
+        <Textarea id="mg-reason" className="mt-1.5" maxLength={500} placeholder="e.g. client reports the contact form was never delivered" value={mgReason} onChange={e=>setMgReason(e.target.value)}/>
+       </div>
+       <div>
+        <Label htmlFor="mg-amount" className="block">Refund amount (USD) <span className="font-normal text-muted-foreground">(you decide this - the AI never sets an amount)</span></Label>
+        <input id="mg-amount" className="mt-1.5 w-32 rounded-md border border-input bg-background px-2.5 py-1.5 font-mono text-xs tabular-nums" placeholder="0.00" value={mgAmount} onChange={e=>setMgAmount(e.target.value)}/>
+       </div>
+       <div className="flex flex-wrap items-center gap-2">
+        <Button variant="outline" size="sm" disabled={mgBusy||mgMissing.length>0} onClick={mgCreate}>{mgBusy?'Comparing...':'Compare and prepare refund'}</Button>
+        {!mgBusy&&mgMissing.length>0&&<span className="text-xs text-muted-foreground">Add {mgMissing.join(', ')} to run the comparison.</span>}
+       </div>
+      </div>}
       {mgDraft&&<div className="mt-2 rounded-md border border-border p-2.5">
        <span className="text-xs text-muted-foreground">Comparison - claim coverage only, not verified delivery</span>
        {config?.aiMode==='fixture'&&<div className="mt-1.5"><Badge variant="warn">Fixture replay - synthetic demo output, not a live AI run</Badge></div>}
